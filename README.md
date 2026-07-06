@@ -1,45 +1,47 @@
-# Atomic-Starlines
-**Atomic Starlines** is a multiplayer spaceship automation tycoon prototype built in **Unreal Engine 5**.
+# Atomic Starlines — UE5 Technical Overview
 
-Combining third-person avatar control, grid-based construction, conveyor automation, and objective-driven spaceship management inside a retro-futurist sci-fi setting.
+**Atomic Starlines** is an Unreal Engine 5 systems prototype exploring grid-based construction, data-driven gameplay architecture, and multiplayer-aware simulation design.
+
+The project is currently focused on building a strong technical foundation rather than final game content. The goal is to develop clean, modular Unreal systems that can support construction, automation, UI, multiplayer replication, and future simulation features.
 
 <img width="1254" height="1254" alt="ProjectThumbnail_AtomicStarlines" src="ProjectThumbnail_AtomicStarlines.png" />
 
-Players control chibi spacefarers aboard a retro-futurist starship, building conveyor networks, production machines, rooms, and ship systems directly on a grid. The goal is to complete contracts, manage resources, expand the ship, and survive chaotic space routes across an alternate atomic-age galaxy.
+## Technical Focus
 
-## Core Features
+- Unreal Engine 5 C++ and Blueprint workflows
+- Grid-based building placement and validation
+- Data-driven building definitions
+- Multiplayer-aware gameplay architecture
+- Performance-conscious C++ systems design
+- Modular actor/component architecture
+- Editor-friendly workflows and debug tooling
 
-- Third-person multiplayer avatar control
-- Grid-based building placement
-- Conveyor belt automation
-- Resource production and logistics
-- Room, wall, and ship-system construction
-- Objective-driven contract gameplay
-- Retro-futurist sci-fi setting
+## Current Prototype Scope
 
-## Prototype Goals
+The current prototype centers on a third-person player placing buildings and conveyor-style systems on a ship-based grid. Placement is designed around local client previews, authoritative validation, and future network replication.
 
-This project is focused on building a playable vertical slice featuring:
+Key systems include:
 
-- Multiplayer character movement
-- Server-authoritative grid construction
-- Functional conveyor/item flow
-- Basic production recipes
-- Simple route/objective loop
-- Chibi sci-fi presentation style
+- Ship grid actor and grid components
+- Grid coordinate conversion utilities
+- Placement validation and footprint checks
+- Building definition data assets
+- Runtime placed build records
+- Preview/ghost placement logic
+- Camera and input systems for construction mode
 
-## Tech Stack
+## Repository Purpose
 
-- Unreal Engine 5
-- C++
-- Blueprints
-- Multiplayer replication
-- Data-driven gameplay systems
+This repository is a technical overview and code sample collection. It is not the full production repository.
 
-## Status
+It is intended to show:
 
-Early prototype.
+- How the project is structured
+- What systems are being developed
+- The architectural direction
+- Selected Unreal C++ implementation examples
+- Current technical priorities and trade-offs
 
-## Copyright
+## Related Project
 
-Copyright (c) 2026 Dreamboy Games Pty Ltd. All rights reserved.
+A previous Unreal Engine prototype, Project Elevate, explored multiplayer arena fighter systems, stylized 3D visuals, animation workflows, and gameplay prototyping. Atomic Starlines builds on that experience with a stronger focus on systemic gameplay, simulation, networking, and long-term architecture.
