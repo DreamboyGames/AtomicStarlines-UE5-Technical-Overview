@@ -9,6 +9,8 @@ The project is currently focused on building a strong technical foundation rathe
 
 **Co-Dev Website:** https://dreamboygames.com/
 
+**Technical Documentation:** https://github.com/DreamboyGames/AtomicStarlines-UE5-Technical-Overview/tree/master/Docs
+
 <img width="1254" height="1254" alt="ProjectThumbnail_AtomicStarlines" src="ProjectThumbnail_AtomicStarlines.png" />
 
 ## Technical Focus
