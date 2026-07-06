@@ -4,6 +4,13 @@
 
 The project is currently focused on building a strong technical foundation rather than final game content. The goal is to develop clean, modular Unreal systems that can support construction, automation, UI, multiplayer replication, and future simulation features.
 
+
+**Dev Logs:** https://medium.com/@dreamboy-games
+
+**Co-Dev Website:** https://dreamboygames.com/
+
+**Technical Documentation:** https://github.com/DreamboyGames/AtomicStarlines-UE5-Technical-Overview/tree/master/Docs
+
 <img width="1254" height="1254" alt="ProjectThumbnail_AtomicStarlines" src="ProjectThumbnail_AtomicStarlines.png" />
 
 ## Technical Focus
