@@ -20,6 +20,8 @@ class UAtomicBuildingRegistrySubsystem;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 // GRID DATA COMPONENT
 // This class stores the actual grid state
+//
+// Authoritative Belt Records + Connection Queries + Occupancy
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class ATOMICSTARLINES_API UAtomicGridDataComponent : public UActorComponent {
@@ -46,7 +48,7 @@ public:
 	
 	
 	// ---------------------------------------------------------------------
-	// Building Records
+	// BUILD RECORDS
 	// ---------------------------------------------------------------------
 	bool AddBuildingRecord(const FAtomicBuildingRecord& NewRecord);
 	void MarkBuildingRecordChanged(FAtomicBuildingRecord& Record);
@@ -55,10 +57,12 @@ public:
 	bool AddBeltRecord(const FAtomicBeltRecord& NewRecord);
 	void MarkBeltRecordChanged(FAtomicBeltRecord& Record);
 	bool RemoveBeltRecord(const FGuid& InstanceID);
-
 	// ---------------------------------------------------------------------
-	// Replication Callbacks from Fast Array deltas
-	// Rebuild Local Cells Occupancy Cache. Rebuild visuals & collision.
+	
+	
+	// ---------------------------------------------------------------------
+	// REPLICATION CALLBACKS, from Fast Array deltas.
+	// DO: rebuild local cells occupancy cache & rebuild visuals & collision.
 	// ---------------------------------------------------------------------
 	void HandleBuildingRecordAdded(const FAtomicBuildingRecord& Record);
 	void HandleBuildingRecordChanged(const FAtomicBuildingRecord& Record);
@@ -67,13 +71,21 @@ public:
 	void HandleBeltRecordAdded(const FAtomicBeltRecord& Record);
 	void HandleBeltRecordChanged(const FAtomicBeltRecord& Record);
 	void HandleBeltRecordRemoved(const FAtomicBeltRecord& Record);
+	// ---------------------------------------------------------------------
 
+	
+	// ---------------------------------------------------------------------
+	// Belt Helpers
+	// ---------------------------------------------------------------------
 	FAtomicBeltRecord* FindBeltRecordAtIndex(const int32 Index);
 	const FAtomicBeltRecord* FindBeltRecordAtIndex(const int32 Index) const;
-	bool HasReciprocalBeltConnectionAtPort(const int32 Index, const EGridDirection PortDirection);
-	bool HasAnyNeighbourBeltConnection(const int32 Index);
-	void GetConnectedRoutePortsForBelt(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutConnectedPorts);
+	const FAtomicBeltRecord* GetNeighbourBeltRecord(const int32 Index, const EGridDirection Direction) const;
+	bool HasReciprocalBeltConnectionAtPort(const int32 Index, const EGridDirection PortDirection) const;
+	bool HasAnyNeighbourBeltConnection(const int32 Index) const;
+	void GetConnectedRoutePortsForBeltRecord(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutConnectedPorts) const;
+	void GetConnectedRoutePortsForBeltCandidate(const int32 CellIndex, const EAtomicBeltShape Shape, const EBuildingRotation Rotation, TArray<EGridDirection>& OutConnectedPorts) const;
 
+	
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AtomicGrid")
 	float CellSize;

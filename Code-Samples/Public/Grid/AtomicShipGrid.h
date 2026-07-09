@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "AtomicShipGrid.generated.h"
 
+struct FAtomicResolvedPreviewBelt;
 enum class EBuildingRotation : uint8;
 enum class EAtomicBeltShape : uint8;
 struct FAtomicResolvedBeltVisual;
@@ -43,40 +44,44 @@ public:
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void PostInitializeComponents() override;
+
+	// ---------------------------------------------------------------------
+	// COMPONENTS
+	// ---------------------------------------------------------------------
 	
+	// Authoritative Belt Records + Connection Queries + Occupancy
 	UAtomicGridDataComponent* GetGridData() const { return GridDataComponent; }
 	
+	// Placement Validation Rules
 	UAtomicGridPlacementComponent* GetGridPlacementComponent() const { return PlacementComponent; }
+	
+	// Render Placed Belts using HISM: Hierarchical Instanced Static Mesh
 	UAtomicGridVisualComponent* GetGridVisualComponent() const { return VisualComponent; } 
-	
-	bool ResolveBeltVisual(const FAtomicBeltRecord& BeltRecord, FAtomicResolvedBeltVisual& OutResolvedVisual) const;
-	bool ResolveBeltPreviewVisual(const FAtomicBeltRecord& PreviewBeltRecord, FAtomicResolvedBeltVisual& OutResolvedVisual) const;
-	
-	void GetValidBeltPlacementRotations(const int32 Index, const EAtomicBeltShape Shape, TArray<EBuildingRotation>& OutRotations) const;
-	int32 CountBeltConnectionsForRotation(const int32 Index, const EAtomicBeltShape BeltShape, const EBuildingRotation CandidateRotation) const;
 
-	
+
 protected:
 	// @todo: UAtomicShipGridDefinition Data Asset to set ship grid defaults per ship 
 	//TObjectPtr<UAtomicShipGridDefinition> GridDefinition;
-
-	// Replicated PlacedBuildingRecords
-	// Local Cells cache
-	// Broadcasts record changes
+	
+	// ---------------------------------------------------------------------
+	// Authoritative Belt Records + Connection Queries + Occupancy
+	// Replicated: PlacedBuildingRecords only
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AtomicGrid")
 	TObjectPtr<UAtomicGridDataComponent> GridDataComponent;
-
-	// Not Replicated
-	// Server-only placement validation. Client-side preview checks.
-	// Creates records
+	
+	// ---------------------------------------------------------------------
+	// Placement Validation Rules | Creates Records
+	// Not Replicated: Server-only placement validation, Client-side preview checks.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AtomicGrid")
 	TObjectPtr<UAtomicGridPlacementComponent> PlacementComponent;
-
-	// Not Replicated. Rebuilds local visuals.
+	
+	// ---------------------------------------------------------------------
+	// Render Placed Belts using HISM: Hierarchical Instanced Static Mesh
 	// Materializes records into local building actors
-	// Keeps map of BuildInstanceID → local actor
+	// Not Replicated: Rebuilds local visuals only.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AtomicGrid")
 	TObjectPtr<UAtomicGridVisualComponent> VisualComponent;
+	
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AtomicGrid")
 	TObjectPtr<USceneComponent> SceneRoot;

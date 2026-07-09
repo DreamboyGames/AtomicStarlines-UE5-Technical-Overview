@@ -7,6 +7,8 @@
 #include "AtomicGridVisualComponent.generated.h"
 
 
+struct FAtomicResolvedPreviewBelt;
+struct FAtomicResolvedBeltVisual;
 class UAtomicBeltDefinition;
 enum class EBuildingRotation : uint8;
 enum class EAtomicBeltVisualVariant : uint8;
@@ -18,6 +20,11 @@ class UAtomicGridDataComponent;
 class AAtomicShipGrid;
 class AAtomicBuildingActor;
 
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+// GRID VISUAL COMPONENT
+// Render Placed Belts using HISM: Hierarchical Instanced Static Mesh
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class ATOMICSTARLINES_API UAtomicGridVisualComponent : public UActorComponent {
 	GENERATED_BODY()
@@ -27,11 +34,21 @@ public:
 	
 	void Initialize();
 
+	// ---------------------------------------------------------------------
+	// Buildings
+	// ---------------------------------------------------------------------
 	void SpawnOrUpdateBuildingFromRecord(const FAtomicBuildingRecord& BuildRecord);
 	void DestroyLocalBuilding(const FGuid& BuildInstanceID);
-	
+
+	// ---------------------------------------------------------------------
+	// Belts
+	// ---------------------------------------------------------------------
+	void RequestBeltVisualRebuild();
 	void NotifyVisualsToRebuildBelts();
 	void NotifyVisualsToRebuildBeltsAtIndex(const int32 BeltIndex);
+	
+	bool ResolveBeltVisualForRecord(const FAtomicBeltRecord& BeltRecord, FAtomicResolvedBeltVisual& OutResolvedVisual) const;
+	bool ResolveBeltVisualForPreviewRecord(const FAtomicBeltRecord& PreviewBeltRecord, FAtomicResolvedPreviewBelt& OutResolvedPreview) const;
 
 protected:
 

@@ -15,6 +15,11 @@ class UAtomicBuildingDefinition;
 class AAtomicShipGrid;
 class UAtomicGridDataComponent;
 
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+// GRID PLACEMENT COMPONENT
+// Placement Validation Rules
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class ATOMICSTARLINES_API UAtomicGridPlacementComponent : public UActorComponent {
 	GENERATED_BODY()
@@ -23,17 +28,26 @@ public:
 	UAtomicGridPlacementComponent();
 	void Initialize();
 
+	// ---------------------------------------------------------------------
+	// Buildings
+	// ---------------------------------------------------------------------
 	bool CanPlaceBuilding(const UAtomicBuildingDefinition* BuildingDefinition, const FIntVector GridCoord, const EBuildingRotation CurrentRotation) const;
-	bool CanPlaceBelt(const UAtomicBeltDefinition* BeltDefinition, const FIntVector GridCoord, const EAtomicBeltShape BeltShape, const EBuildingRotation CurrentRotation, const EGridDirection OutputGridDirection) const;
-
 	bool TryPlaceBuilding(const FName BuildingID, const FIntVector AnchorCoord, const EBuildingRotation Rotation, const APawn* RequestingPawn) const;
-	bool TryPlaceBelt(const FName BeltID, const FIntVector AnchorCoord, const EAtomicBeltShape BeltShape, const EBuildingRotation Rotation, const EGridDirection OutputGridDirection, const APawn* RequestingPawn) const;
-
 	bool TryRemoveBuilding();
+
+	// ---------------------------------------------------------------------
+	// Belts
+	// ---------------------------------------------------------------------
+	bool CanPlaceBelt(const UAtomicBeltDefinition* BeltDefinition, const FIntVector GridCoord, const EAtomicBeltShape BeltShape, const EBuildingRotation CurrentRotation, const EGridDirection OutputGridDirection) const;
+	bool TryPlaceBelt(const FName BeltID, const FIntVector AnchorCoord, const EAtomicBeltShape BeltShape, const EBuildingRotation Rotation, const EGridDirection OutputGridDirection, const APawn* RequestingPawn) const;
 	bool TryRemoveBelt();
 
+	// ---------------------------------------------------------------------
+	// Helpers
+	// ---------------------------------------------------------------------
 	bool CheckIfValidCell(const FIntVector CellCoord) const;
 
+	
 protected:
 
 private:

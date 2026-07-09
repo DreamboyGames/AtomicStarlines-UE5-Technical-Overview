@@ -5,7 +5,9 @@
 #include "Grid/AtomicGridLibrary.h"
 #include "Grid/AtomicGridTypes.h"
 
-bool FAtomicBeltVisualResolver::ResolveBeltVisual(const EAtomicBeltShape BeltShape, const EBuildingRotation BeltRotation, const TArray<EGridDirection>& RoutePorts, const TArray<EGridDirection>& ConnectedPorts, FAtomicResolvedBeltVisual& OutResolvedVisual)
+
+// Get Resolved Belt Visual (mesh variant and rotation) based on Connected RoutePorts
+bool FAtomicBeltVisualResolver::ResolveBeltVisualFromConnectedRoutePorts(const EAtomicBeltShape BeltShape, const EBuildingRotation BeltRotation, const TArray<EGridDirection>& RoutePorts, const TArray<EGridDirection>& ConnectedPorts, FAtomicResolvedBeltVisual& OutResolvedVisual)
 {
 	OutResolvedVisual = FAtomicResolvedBeltVisual();
 	

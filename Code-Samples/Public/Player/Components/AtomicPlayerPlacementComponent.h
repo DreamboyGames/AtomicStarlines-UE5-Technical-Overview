@@ -20,7 +20,9 @@ class AAtomicShipGrid;
 class AAtomicPlayerController;
 
 
-USTRUCT()	// Where on the grid are we aiming?
+
+// Where on the grid are we aiming?
+USTRUCT()	
 struct FAtomicPlacementTarget {
 	GENERATED_BODY()
 	
@@ -60,12 +62,15 @@ struct FAtomicPlacementPreviewResult {
 	FVector WorldLocation = FVector::ZeroVector;
 	FRotator WorldRotation = FRotator::ZeroRotator;
 	
-	bool bCanPlace = false;
-	bool bShowGhost = false;
-	
 	// Optional, useful for debug drawing / footprint highlight.
 	TArray<FIntVector> PreviewCells;
 	
+	FAtomicResolvedPreviewBelt ResolvedPreviewBelt;
+	bool bHasResolvedBelt = false;
+	
+	bool bCanPlace = false;
+	bool bShowGhost = false;
+
 	bool IsValid() const
 	{
 		return bShowGhost && Mesh != nullptr;
@@ -194,18 +199,25 @@ private:
 	bool BuildBuildingPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& OutResult) const;
 	bool BuildBeltPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& OutResult) const;
 	bool BuildWallPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& PreviewResult) const;
+
+	void UpdatePlacementDistanceFromStep();
 	
 	void RotateBuildingPlacement(const float InputValue);
 	void RotateBeltPlacement(const float InputValue);
-	void GetBeltRotationSearchOrder(const EBuildingRotation StartRotation, const bool bRotateRight, TArray<EBuildingRotation>& OutRotations) const;
-	void GetConnectedBeltRoutePortsForCandidate(const int32 GridIndex, const EAtomicBeltShape BeltShape, const EBuildingRotation CandidateRotation, TArray<EGridDirection>& OutConnectedPorts) const;
-	bool TryGetOtherRoutePort(const TArray<EGridDirection>& RoutePorts, const EGridDirection KnownPort, EGridDirection& OutOtherPort) const;
+
+	void UpdateAutoBeltSelectionForTarget(const FAtomicPlacementTarget& Target);
+	void BuildBeltPlacementCandidates(const FAtomicPlacementTarget& Target, TArray<FAtomicBeltPlacementCandidate>& OutCandidates) const;
+	int32 ScoreBeltPlacementCandidate(const FAtomicPlacementTarget& Target, const FAtomicBeltPlacementCandidate& Candidate) const;
+	bool TryChooseBestBeltCandidate(const TArray<FAtomicBeltPlacementCandidate>& Candidates, const bool bRequireConnection, FAtomicBeltPlacementCandidate& OutBestCandidate) const;
+	bool TryChooseBestOutputForRouteRotation(const TArray<FAtomicBeltPlacementCandidate>& Candidates, const EBuildingRotation Rotation, const bool bRequireConnection, FAtomicBeltPlacementCandidate& OutBestCandidate) const;
 	EGridDirection ChooseOutputDirectionForBeltCandidate(const EAtomicBeltShape BeltShape, const EBuildingRotation OldRotation, const EGridDirection OldOutputDirection, const EBuildingRotation CandidateRotation, const TArray<EGridDirection>& ConnectedPorts) const;
+
+	void GetBeltRotationSearchOrder(const EBuildingRotation StartRotation, const bool bClockwise, TArray<EBuildingRotation>& OutRotations) const;
+	bool TryGetOtherRoutePort(const TArray<EGridDirection>& RoutePorts, const EGridDirection KnownPort, EGridDirection& OutOtherPort) const;
+	void SetBeltOutputToDefaultForCurrentRoute();
 	void EnsureOutputDirectionIsValidForCurrentBelt();
 	void FlipBeltFlowDirection();
 	
-	void UpdatePlacementDistanceFromStep();
-
 	void StartPlacement();
 	void ClearSelectedPlacement();
 	
@@ -215,11 +227,16 @@ private:
 	UPROPERTY(Transient)
 	FAtomicPlacementSelection CurrentSelection;
 	
-	UPROPERTY()
+	UPROPERTY(Transient)
 	TObjectPtr<AAtomicPlacementGhostActor> GhostActor;
 
 	bool bIsPlacementActive = false;
 	bool bHasValidPlacement = false;
+	
+	// Belt preview auto-selection state.
+	// Auto-select is allowed until the player manually rotates on this target cell.
+	UPROPERTY(Transient)
+	bool bBeltRotationManuallyOverridden = false;
 	
 	bool bPlacementRequestPending = false;
 	
@@ -233,8 +250,14 @@ private:
 	UPROPERTY()
 	TObjectPtr<UAtomicBuildingRegistrySubsystem> PlacementRegistry;
 	
-	UPROPERTY()
+	UPROPERTY(Transient)
 	FAtomicPlacementTarget CurrentTarget;
+	
+	UPROPERTY(Transient)
+	int32 LastTargetGridIndex = INDEX_NONE;
+	
+	UPROPERTY(Transient)
+	TWeakObjectPtr<AAtomicShipGrid> LastTargetShipGrid;
 
 	
 public:

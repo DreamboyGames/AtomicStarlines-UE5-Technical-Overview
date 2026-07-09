@@ -357,18 +357,19 @@ void UAtomicGridDataComponent::HandleBeltRecordRemoved(const FAtomicBeltRecord& 
 
 // Does belt at this index have a valid (reciprocal) connection to neighbour belt in port direction?
 // (e.g, if this index A has route port East, is there a belt at index B on the East side & does it have a route port West?)
-// USAGE: Check both port directions with UAtomicGridLibrary::GetBeltRotatedRoutePorts()
-bool UAtomicGridDataComponent::HasReciprocalBeltConnectionAtPort(const int32 Index, const EGridDirection PortDirection)
+bool UAtomicGridDataComponent::HasReciprocalBeltConnectionAtPort(const int32 Index, const EGridDirection PortDirection) const
 {
 	const int32 NeighbourIndex = UAtomicGridLibrary::GetNeighbourIndex(Index, PortDirection, GridSize);
 	const FAtomicBeltRecord* NeighbourBelt = FindBeltRecordAtIndex(NeighbourIndex);
 	if (!NeighbourBelt) return false;
 	
-	const TArray<EGridDirection> NeighbourRoutePorts  = UAtomicGridLibrary::GetBeltRotatedRoutePorts(NeighbourBelt->Shape, NeighbourBelt->RouteRotation);
+	const TArray<EGridDirection> NeighbourRoutePorts  = UAtomicGridLibrary::GetBeltRotatedRoutePorts(NeighbourBelt->Shape, NeighbourBelt->Rotation);
 	return NeighbourRoutePorts.Contains(UAtomicGridLibrary::OppositeGridDirection(PortDirection));
 }
 
-bool UAtomicGridDataComponent::HasAnyNeighbourBeltConnection(const int32 Index)
+// Check All Directions for valid (reciprocal) belt connections
+// Does Not care about flow direction
+bool UAtomicGridDataComponent::HasAnyNeighbourBeltConnection(const int32 Index) const
 {
 	int32 NeighbourCount = 0;
 	for (const EGridDirection Direction : AllDirections)
@@ -381,12 +382,12 @@ bool UAtomicGridDataComponent::HasAnyNeighbourBeltConnection(const int32 Index)
 	return NeighbourCount != 0;
 }
 
-// 
-void UAtomicGridDataComponent::GetConnectedRoutePortsForBelt(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutConnectedPorts)
+// Get any valid (reciprocal) belt connections for this belt's RoutePorts
+void UAtomicGridDataComponent::GetConnectedRoutePortsForBeltRecord(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutConnectedPorts) const
 {
 	OutConnectedPorts.Reset();
 	
-	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(BeltRecord.Shape, BeltRecord.RouteRotation);
+	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(BeltRecord.Shape, BeltRecord.Rotation);
 	
 	for (const EGridDirection RoutePort : RoutePorts)
 	{
@@ -397,6 +398,23 @@ void UAtomicGridDataComponent::GetConnectedRoutePortsForBelt(const FAtomicBeltRe
 	}
 }
 
+// Get any valid (reciprocal) belt connections for this belt candidate's RoutePorts
+void UAtomicGridDataComponent::GetConnectedRoutePortsForBeltCandidate(const int32 CellIndex, const EAtomicBeltShape Shape, const EBuildingRotation Rotation, TArray<EGridDirection>& OutConnectedPorts) const
+{
+	OutConnectedPorts.Reset();
+	
+	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(Shape, Rotation);
+	
+	for (const EGridDirection RoutePort : RoutePorts)
+	{
+		if (HasReciprocalBeltConnectionAtPort(CellIndex, RoutePort))
+		{
+			OutConnectedPorts.Add(RoutePort);
+		}
+	}
+}
+
+// Get modifiable belt record at index
 FAtomicBeltRecord* UAtomicGridDataComponent::FindBeltRecordAtIndex(const int32 Index)
 {
 	for (FAtomicBeltRecord& BeltRecord : BeltRecords.Items)
@@ -409,6 +427,7 @@ FAtomicBeltRecord* UAtomicGridDataComponent::FindBeltRecordAtIndex(const int32 I
 	return nullptr;
 }
 
+// Read-Only query to belt record at index
 const FAtomicBeltRecord* UAtomicGridDataComponent::FindBeltRecordAtIndex(const int32 Index) const
 {
 	for (const FAtomicBeltRecord& BeltRecord : BeltRecords.Items)
@@ -419,6 +438,13 @@ const FAtomicBeltRecord* UAtomicGridDataComponent::FindBeltRecordAtIndex(const i
 		}	
 	}
 	return nullptr;
+	constexpr 
+}
+
+const FAtomicBeltRecord* UAtomicGridDataComponent::GetNeighbourBeltRecord(const int32 Index, const EGridDirection Direction) const
+{
+	const int32 NeighbourIndex = UAtomicGridLibrary::GetNeighbourIndex(Index, Direction, GridSize);
+	return FindBeltRecordAtIndex(NeighbourIndex);
 }
 
 

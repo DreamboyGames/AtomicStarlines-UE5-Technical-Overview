@@ -247,7 +247,7 @@ bool UAtomicGridPlacementComponent::TryPlaceBelt(const FName BeltID, const FIntV
 	NewRecord.CellIndex = AnchorCellIndex;
 	NewRecord.DeckIndex = static_cast<uint8>(AnchorCoord.Z);
 	NewRecord.OwningPlayerID = OwningPlayerID;
-	NewRecord.RouteRotation = Rotation;
+	NewRecord.Rotation = Rotation;
 	NewRecord.OutputFlowDirection = OutputGridDirection;
 	NewRecord.Shape = BeltShape;
 

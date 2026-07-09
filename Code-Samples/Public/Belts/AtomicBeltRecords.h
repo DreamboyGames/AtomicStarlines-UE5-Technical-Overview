@@ -6,8 +6,8 @@
 #include "Net/Serialization/FastArraySerializer.h"
 #include "AtomicBeltRecords.generated.h"
 
-
 enum class EAtomicBeltShape : uint8;
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 // BELT RECORDS -- FAST ARRAY
 // Keep Compact!  Send IDs, not content.  --  Do not put meshes, materials, data asset pointers, or actor pointers in this record.
@@ -38,7 +38,7 @@ struct FAtomicBeltRecord : public FFastArraySerializerItem {
 	
 	// Defines possible connection sides only. E.g. (E,W) or (E,S)
 	UPROPERTY()
-	EBuildingRotation RouteRotation = EBuildingRotation::East;
+	EBuildingRotation Rotation = EBuildingRotation::East;
 	
 	// Flow Direction, item Output port
 	UPROPERTY()

@@ -45,7 +45,7 @@ struct FAtomicResolvedBeltVisual {
 // Visual Resolver
 struct FAtomicBeltVisualResolver {
 public:
-	static bool ResolveBeltVisual(EAtomicBeltShape BeltShape, EBuildingRotation BeltRotation, const TArray<EGridDirection>& RoutePorts, const TArray<EGridDirection>& ConnectedPorts, FAtomicResolvedBeltVisual& OutResolvedVisual);
+	static bool ResolveBeltVisualFromConnectedRoutePorts(const EAtomicBeltShape BeltShape, EBuildingRotation BeltRotation, const TArray<EGridDirection>& RoutePorts, const TArray<EGridDirection>& ConnectedPorts, FAtomicResolvedBeltVisual& OutResolvedVisual);
 	
 private:
 	static EBuildingRotation GridDirectionToEquivalentBuildingRotation(EGridDirection GridDirection);
@@ -58,8 +58,8 @@ struct FAtomicBeltTopologyRules {
 };
 
 struct FAtomicBeltPlacementCandidate {
-	EAtomicBeltShape BeltShape;
-	EBuildingRotation RouteRotation;
+	EAtomicBeltShape Shape;
+	EBuildingRotation Rotation;
 	EGridDirection OutputFlowDirection;
 	
 	TArray<EGridDirection> RoutePorts;
@@ -78,6 +78,8 @@ struct FAtomicResolvedPreviewBelt {
 	
 	EAtomicBeltVisualVariant VisualVariant;
 	EBuildingRotation VisualRotation;
+	
+	bool bReverseMaterialFlow = false;
 	
 	bool bIsValid = false;
 };

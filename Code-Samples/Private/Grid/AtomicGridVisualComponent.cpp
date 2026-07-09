@@ -179,6 +179,8 @@ void UAtomicGridVisualComponent::ClearBeltInstances()
 	}
 }
 
+// Record -> ResolveBeltVisual() -> GetMeshForVariant() -> AddInstance()
+
 void UAtomicGridVisualComponent::RebuildAllBeltVisuals()
 {
 	if (!GridData || !ShipGrid) return;
@@ -193,7 +195,7 @@ void UAtomicGridVisualComponent::RebuildAllBeltVisuals()
 		if (!BeltDefinition) continue;
 		
 		FAtomicResolvedBeltVisual ResolvedVisual;
-		if (!ShipGrid->ResolveBeltVisual(Record, ResolvedVisual))
+		if (!ResolveBeltVisualForRecord(Record, ResolvedVisual))
 		{
 			continue;
 		}
@@ -217,3 +219,40 @@ FTransform UAtomicGridVisualComponent::MakeBeltWorldTransform(const FAtomicBeltR
 	return FTransform(FRotator(0.f, Yaw, 0.f), WorldLocation, FVector::OneVector);
 }
 
+bool UAtomicGridVisualComponent::ResolveBeltVisualForRecord(const FAtomicBeltRecord& BeltRecord, FAtomicResolvedBeltVisual& OutResolvedVisual) const
+{
+	if (!GridData) return false;
+	
+	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(BeltRecord.Shape, BeltRecord.Rotation);
+	
+	TArray<EGridDirection> ConnectedPorts;
+	GridData->GetConnectedRoutePortsForBeltRecord(BeltRecord, ConnectedPorts);
+	
+	return FAtomicBeltVisualResolver::ResolveBeltVisualFromConnectedRoutePorts(BeltRecord.Shape, BeltRecord.Rotation, RoutePorts, ConnectedPorts, OutResolvedVisual);
+}
+
+bool UAtomicGridVisualComponent::ResolveBeltVisualForPreviewRecord(const FAtomicBeltRecord& PreviewBeltRecord, FAtomicResolvedPreviewBelt& OutResolvedPreview) const
+{
+	// The Preview record does not need to exist in the BeltRecords array;
+	if (!GridData) return false;
+	
+	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(PreviewBeltRecord.Shape, PreviewBeltRecord.Rotation);
+	
+	TArray<EGridDirection> ConnectedPorts;
+	GridData->GetConnectedRoutePortsForBeltRecord(PreviewBeltRecord, ConnectedPorts);
+	
+	FAtomicResolvedBeltVisual ResolvedVisual;
+	const bool bResolvedVisual = FAtomicBeltVisualResolver::ResolveBeltVisualFromConnectedRoutePorts(PreviewBeltRecord.Shape, PreviewBeltRecord.Rotation, RoutePorts, ConnectedPorts, ResolvedVisual);
+	
+	OutResolvedPreview.VisualVariant = ResolvedVisual.VisualVariant;
+	OutResolvedPreview.VisualRotation = ResolvedVisual.VisualRotation;
+	OutResolvedPreview.bReverseMaterialFlow = ResolvedVisual.bReverseMaterialFlow;
+	OutResolvedPreview.BeltShape = PreviewBeltRecord.Shape;
+	OutResolvedPreview.RouteRotation = PreviewBeltRecord.Rotation;
+	OutResolvedPreview.OutputFlowDirection = PreviewBeltRecord.OutputFlowDirection;
+	OutResolvedPreview.RoutePorts = RoutePorts;
+	OutResolvedPreview.ConnectedRoutePorts = ConnectedPorts;
+	OutResolvedPreview.bIsValid = bResolvedVisual;
+	
+	return OutResolvedPreview.bIsValid;
+}
