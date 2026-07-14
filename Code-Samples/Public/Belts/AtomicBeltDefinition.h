@@ -50,17 +50,31 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
 	TObjectPtr<UStaticMesh> StraightDoubleEndMesh;
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
-	TObjectPtr<UStaticMesh> CornerMesh;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
-	TObjectPtr<UStaticMesh> CornerEndMeshA;
+	TObjectPtr<UStaticMesh> TurnLeftMesh;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
-	TObjectPtr<UStaticMesh> CornerEndMeshB;
+	TObjectPtr<UStaticMesh> TurnLeftEndInputConnectedMesh;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
-	TObjectPtr<UStaticMesh> CornerDoubleEndMesh;
+	TObjectPtr<UStaticMesh> TurnLeftEndOutputConnectedMesh;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
+	TObjectPtr<UStaticMesh> TurnLeftEndDoubleMesh;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
+	TObjectPtr<UStaticMesh> TurnRightMesh;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
+	TObjectPtr<UStaticMesh> TurnRightEndInputConnectedMesh;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
+	TObjectPtr<UStaticMesh> TurnRightEndOutputConnectedMesh;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
+	TObjectPtr<UStaticMesh> TurnRightEndDoubleMesh;
+
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Atomic|Building")
 	TObjectPtr<UMaterialInterface> BeltMaterial;

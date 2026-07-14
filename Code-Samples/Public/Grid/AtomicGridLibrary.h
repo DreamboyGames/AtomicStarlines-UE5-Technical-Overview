@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AtomicGridTypes.h"
+#include "Belts/AtomicBeltTypes.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "AtomicGridLibrary.generated.h"
 
@@ -77,10 +78,10 @@ public:
 	static float GridDirectionToYawDegrees(EGridDirection GridDirection);
 	
 	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Directions")
-	static FIntVector GetNeighbourCoord(const FIntVector GridCoord, const EGridDirection GridDirection);
+	static bool TryGetNeighbourIndex(const int32 GridIndex, const EGridDirection GridDirection, const FIntVector GridSize, int32& OutGridIndex);
 	
 	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Directions")
-	static int32 GetNeighbourIndex(const int32 GridIndex, const EGridDirection GridDirection, const FIntVector GridSize);
+	static FIntVector GetNeighbourCoord(const FIntVector GridCoord, const EGridDirection GridDirection);
 	
 	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Directions")
 	static EGridDirection RotateGridDirectionByBuildingRotation(const EGridDirection GridDirection, const EBuildingRotation BuildingRotation);
@@ -120,6 +121,9 @@ public:
 	static EGridDirection BuildingRotationToGridDirection(const EBuildingRotation BuildingRotation);
 	
 	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Rotation")
+	static EBuildingRotation GridDirectionToBuildingRotation(const EGridDirection GridDirection);
+	
+	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Rotation")
 	static EBuildingRotation RotateBuildingClockwise(const EBuildingRotation BuildingRotation);
 	
 	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Rotation")
@@ -145,10 +149,35 @@ public:
 	// ---------------------------------------------------------------------
 	
 	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
-	static TArray<EGridDirection> GetBeltBaseRoutePorts(const EAtomicBeltShape BeltShape);
+	static EGridDirection GetDefaultInputPort(const EAtomicBeltRouteType RouteType);
 	
 	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
-	static TArray<EGridDirection> GetBeltRotatedRoutePorts(const EAtomicBeltShape BeltShape, const EBuildingRotation BeltRotation);
+	static EGridDirection GetDefaultOutputPort(const EAtomicBeltRouteType RouteType);
+	
+	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
+	static EGridDirection GetOutputPortForInput(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort);
+	
+	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
+	static void GetRoutePortsForInput(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, TArray<EGridDirection>& OutRoutePorts);
+	
+	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
+	static bool TryGetRouteTypeForInputAndOutput(const EGridDirection InputPort, const EGridDirection OutputPort, EAtomicBeltRouteType& OutRouteType);
+	
+	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
+	static bool TryGetInputPortForRouteTypeAndOutput(const EAtomicBeltRouteType RouteType, const EGridDirection OutputPort, EGridDirection& OutInputPort);
+	
+	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
+	static void GetRoutePortsForBuildingRotation(const EAtomicBeltRouteType RouteType, const EBuildingRotation BuildingRotation, TArray<EGridDirection>& OutRoutePorts);
+	
+	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
+	static EGridDirection GetInputPortForBuildingRotation(const EBuildingRotation BuildingRotation);
+	
+	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
+	static EGridDirection GetOutputPortForBuildingRotation(const EAtomicBeltRouteType RouteType, const EBuildingRotation BuildingRotation);
+	
+	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
+	static EBuildingRotation GetBuildingRotationForInputPort(const EGridDirection InputPort);
+
 
 	
 private:

@@ -8,7 +8,7 @@
 
 struct FAtomicResolvedPreviewBelt;
 enum class EBuildingRotation : uint8;
-enum class EAtomicBeltShape : uint8;
+enum class EAtomicBeltRouteType : uint8;
 struct FAtomicResolvedBeltVisual;
 struct FAtomicBeltRecord;
 class UBoxComponent;

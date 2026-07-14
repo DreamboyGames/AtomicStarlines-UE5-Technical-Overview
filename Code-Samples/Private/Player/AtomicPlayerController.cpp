@@ -376,7 +376,7 @@ void AAtomicPlayerController::PlaceConveyorBeltAction()
 	
 	bIsBuildMenuOpen = true;
 	bIsPlacementMode = true;
-	PlacementController->StartPlacementWithSelectedBelt(FName("ConveyorBelt"), EAtomicBeltShape::Straight);
+	PlacementController->StartPlacementWithSelectedBelt(FName("ConveyorBelt"), EAtomicBeltRouteType::Straight);
 }
 
 
@@ -450,7 +450,7 @@ void AAtomicPlayerController::Client_PlaceBuildingRejected_Implementation(EAtomi
 // ---------------------------------------------------------------------
 // Request Place BELT
 // ---------------------------------------------------------------------
-void AAtomicPlayerController::Server_RequestPlaceBelt_Implementation(const FName BuildingID, const FIntVector AnchorCoord, const EAtomicBeltShape BeltShape, const EBuildingRotation Rotation, const EGridDirection OutputGridDirection, const AAtomicShipGrid* TargetGrid)
+void AAtomicPlayerController::Server_RequestPlaceBelt_Implementation(const FName BuildingID, const FIntVector AnchorCoord, const EAtomicBeltRouteType BeltShape, const EGridDirection InputPort, const EGridDirection OutputPort, const AAtomicShipGrid* TargetGrid)
 {
 	UE_LOG(LogGame, Log, TEXT("Server_RequestPlaceBuilding_Implementation"));
 	if (!TargetGrid || !TargetGrid->HasAuthority()) return;
@@ -461,7 +461,7 @@ void AAtomicPlayerController::Server_RequestPlaceBelt_Implementation(const FName
 	const UAtomicGridPlacementComponent* PlacementComponent = TargetGrid->GetGridPlacementComponent();
 	if (!PlacementComponent) return;
 
-	const bool bPlaced = PlacementComponent->TryPlaceBelt(BuildingID, AnchorCoord, BeltShape, Rotation, OutputGridDirection, RequestingPawn);
+	const bool bPlaced = PlacementComponent->TryPlaceBelt(BuildingID, AnchorCoord, BeltShape, InputPort, OutputPort, RequestingPawn);
 	
 	if (!bPlaced)
 	{

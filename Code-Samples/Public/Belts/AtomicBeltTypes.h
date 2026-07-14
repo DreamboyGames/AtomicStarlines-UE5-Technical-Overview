@@ -9,20 +9,37 @@ enum class EGridDirection : uint8;
 enum class EBuildingRotation : uint8;
 
 UENUM(BlueprintType)
-enum class EAtomicBeltShape : uint8 {
+enum class EAtomicBeltRouteType : uint8 {
+	// Straight: Default Orientation { Input West -> Output East }
 	Straight,
-	Corner
+	// CornerUp: Default Orientation { Input West -> Output North }
+	TurnLeft,
+	// CornerDown: Default Orientation { Input West -> Output South }
+	TurnRight
 };
 
 UENUM(BlueprintType)
 enum class EAtomicBeltVisualVariant : uint8 {
 	Straight,
 	StraightEnd,
-	StraightDoubleEnd,
-	Corner,
-	CornerEndA,
-	CornerEndB,
-	CornerDoubleEnd,
+	StraightEndDouble,
+	
+	TurnLeft,
+	TurnLeftEndInputConnected,		// open input, cap output
+	TurnLeftEndOutputConnected,		// open output, cap input
+	TurnLeftEndDouble,
+	
+	TurnRight,
+	TurnRightEndInputConnected,		// open input, cap output
+	TurnRightEndOutputConnected,	// open output, cap input
+	TurnRightEndDouble
+};
+
+UENUM(BlueprintType)
+enum class EAtomicBeltConnectionRole : uint8 {
+	None,
+	InputPort,
+	OutputPort
 };
 
 USTRUCT(BlueprintType)
@@ -30,38 +47,32 @@ struct FAtomicResolvedBeltVisual {
 	GENERATED_BODY()
 	
 	UPROPERTY(BlueprintReadOnly)
-	EAtomicBeltVisualVariant VisualVariant = EAtomicBeltVisualVariant::Straight;
+	EAtomicBeltVisualVariant VisualVariant = EAtomicBeltVisualVariant::StraightEndDouble;
 	
 	UPROPERTY(BlueprintReadOnly)
 	EBuildingRotation VisualRotation = EBuildingRotation::East;
 	
-	bool bReverseMaterialFlow = false;
-};
-
-// ---------------------------------------------------------------------
-// BELT LOGIC PURE HELPERS
-// ---------------------------------------------------------------------
-
-// Visual Resolver
-struct FAtomicBeltVisualResolver {
-public:
-	static bool ResolveBeltVisualFromConnectedRoutePorts(const EAtomicBeltShape BeltShape, EBuildingRotation BeltRotation, const TArray<EGridDirection>& RoutePorts, const TArray<EGridDirection>& ConnectedPorts, FAtomicResolvedBeltVisual& OutResolvedVisual);
+	UPROPERTY(BlueprintReadOnly)
+	TArray<EGridDirection> RoutePorts;
 	
-private:
-	static EBuildingRotation GridDirectionToEquivalentBuildingRotation(EGridDirection GridDirection);
-	static bool ChooseCornerEndAorB(const TArray<EGridDirection>& RoutePorts, const EGridDirection ConnectedPort, EAtomicBeltVisualVariant& OutVariant);
-};
-
-// Gameplay Topology (route ports, input side, output side, flow direction)
-struct FAtomicBeltTopologyRules {
-	static bool TryGetInputGridDirection(EAtomicBeltShape BeltShape, EBuildingRotation BeltRotation, EGridDirection OutputGridDirection, EGridDirection& OutInputGridDirection);
+	UPROPERTY(BlueprintReadOnly)
+	TArray<EGridDirection> ConnectedRoutePorts;
+	
+	UPROPERTY(BlueprintReadOnly)
+	bool bReverseMaterialFlow = false;
+	
+	UPROPERTY(BlueprintReadOnly)
+	bool bIsValid = false;
 };
 
 struct FAtomicBeltPlacementCandidate {
-	EAtomicBeltShape Shape;
-	EBuildingRotation Rotation;
-	EGridDirection OutputFlowDirection;
+	// Shape/Path from Input to Output
+	EAtomicBeltRouteType RouteType;
+	EBuildingRotation RouteRotation;
+	EGridDirection InputPort;
+	EGridDirection OutputPort;
 	
+	// Derived: { InputPort, OutputPort }
 	TArray<EGridDirection> RoutePorts;
 	TArray<EGridDirection> ConnectedRoutePorts;
 	
@@ -69,10 +80,13 @@ struct FAtomicBeltPlacementCandidate {
 };
 
 struct FAtomicResolvedPreviewBelt {
-	EAtomicBeltShape BeltShape;
+	// Shape/Path from Input to Output
+	EAtomicBeltRouteType RouteType;
 	EBuildingRotation RouteRotation;
-	EGridDirection OutputFlowDirection;
+	EGridDirection InputPort;
+	EGridDirection OutputPort;
 	
+	// Derived: { InputPort, OutputPort }
 	TArray<EGridDirection> RoutePorts;
 	TArray<EGridDirection> ConnectedRoutePorts;
 	
@@ -82,4 +96,35 @@ struct FAtomicResolvedPreviewBelt {
 	bool bReverseMaterialFlow = false;
 	
 	bool bIsValid = false;
+};
+
+// ---------------------------------------------------------------------
+// BELT LOGIC PURE HELPERS
+// ---------------------------------------------------------------------
+// These Functions Assume:
+//
+// Rotation = direction the belt piece is extending / capped toward.
+// Connected/Open Port = Opposite(Rotation)
+//
+// InputPort  = side items enter from
+// OutputPort = side items leave from
+// RouteType  = Straight / Corner-up / Corner-down
+//
+// Straight default route ports: { West, East }
+// Corner   default route ports: { West, North }
+//
+// StraightEnd mesh:
+// - default East rotation = open East, cap West
+//
+// CornerUpEnd:
+// - open RoutePorts[0]
+// - cap  RoutePorts[1]
+//
+// CornerDownEnd:
+// - open RoutePorts[1]
+// - cap  RoutePorts[0]
+
+// Visual Resolver
+struct FAtomicBeltVisualResolver {
+	static bool ResolveBeltVisual(const EAtomicBeltRouteType RouteType, EGridDirection InputPort, EGridDirection OutputPort, const TArray<EGridDirection>& ConnectedRoutePorts, FAtomicResolvedBeltVisual& OutResolvedVisual);
 };

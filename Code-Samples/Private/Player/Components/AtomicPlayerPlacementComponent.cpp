@@ -13,6 +13,7 @@
 #include "Grid/AtomicGridDataComponent.h"
 #include "Grid/AtomicGridLibrary.h"
 #include "Grid/AtomicGridPlacementComponent.h"
+#include "Grid/AtomicGridVisualComponent.h"
 #include "Grid/AtomicShipGrid.h"
 #include "Kismet/GameplayStatics.h"
 #include "Player/AtomicPlayerController.h"
@@ -31,6 +32,67 @@
 // Preview ghost
 // Current hovered grid coord
 // Build confirm input
+
+namespace {
+	int32 GetRotationClockwiseIndex(const EBuildingRotation Rotation)
+	{
+		switch (Rotation)
+		{
+		case EBuildingRotation::North:
+			return 0;
+			
+		case EBuildingRotation::East:
+			return 1;
+			
+		case EBuildingRotation::South:
+			return 2;
+			
+		case EBuildingRotation::West:
+			return 3;
+			
+		default:
+			return 0;
+		}
+	}
+	
+	FString GridDirectionArrayToString(const TArray<EGridDirection>& Directions)
+	{
+		FString Result = TEXT("{ ");
+		
+		for (int32 Index = 0; Index < Directions.Num(); ++Index)
+		{
+			if (Index > 0)
+			{
+				Result += TEXT(", ");
+			}
+			Result += UEnum::GetValueAsString(Directions[Index]);
+		}
+		
+		Result += TEXT(" }");
+		return Result;
+	}
+	
+	FVector GridDirectionToDebugVector(const EGridDirection Direction)
+	{
+		switch (Direction)
+		{
+		case EGridDirection::West:
+			return FVector(1,0,0);
+		
+		case EGridDirection::East:
+			return FVector(-1,0,0);
+
+		case EGridDirection::North:
+			return FVector(0,1,0);
+		
+		case EGridDirection::South:
+			return FVector(0,-1,0);
+
+		default:
+			return FVector::ZeroVector;
+		}
+	}
+}
 
 
 UAtomicPlayerPlacementComponent::UAtomicPlayerPlacementComponent()
@@ -108,7 +170,7 @@ bool UAtomicPlayerPlacementComponent::StartPlacementWithSelectedBuilding(const F
 	return true;
 }
 
-bool UAtomicPlayerPlacementComponent::StartPlacementWithSelectedBelt(const FName BeltID, const EAtomicBeltShape BeltShape)
+bool UAtomicPlayerPlacementComponent::StartPlacementWithSelectedBelt(const FName BeltID, const EAtomicBeltRouteType InitialRouteType)
 {
 	UE_LOG(LogGame, Log, TEXT("Selected Belt: %s"), *BeltID.ToString());
 	
@@ -122,9 +184,19 @@ bool UAtomicPlayerPlacementComponent::StartPlacementWithSelectedBelt(const FName
 	CurrentSelection.PlacementMode = EPlacementMode::Belt;
 	CurrentSelection.DefinitionID = BeltID;
 	CurrentSelection.BeltDefinition = SelectedDefinition;
-	CurrentSelection.BeltShape = BeltShape;
-	CurrentSelection.Rotation = EBuildingRotation::East;
-	CurrentSelection.OutputFlowDirection = EGridDirection::East;
+	
+	CurrentSelection.InitialRouteType = InitialRouteType;
+	CurrentSelection.RouteType = InitialRouteType;
+	
+	CurrentSelection.InputPort = EGridDirection::West;
+	CurrentSelection.OutputPort = UAtomicGridLibrary::GetOutputPortForInput(CurrentSelection.RouteType, CurrentSelection.InputPort);
+	
+	CurrentSelection.Rotation = UAtomicGridLibrary::GetBuildingRotationForInputPort(CurrentSelection.InputPort);
+
+	bBeltInputSnappedToNeighbour = false;
+	bBeltRotationManuallyOverridden = false;
+	LastTargetGridIndex = INDEX_NONE;
+	LastTargetShipGrid = nullptr;
 	
 	UE_LOG(LogGame, Log, TEXT("Selected Belt Definition: %s"), *SelectedDefinition->GetName());
 	
@@ -186,7 +258,7 @@ void UAtomicPlayerPlacementComponent::ConfirmPlacement()
 		break;
 		
 	case EPlacementMode::Belt:
-		LocalController->Server_RequestPlaceBelt(CurrentSelection.DefinitionID, CurrentTarget.GridCoord, CurrentSelection.BeltShape, CurrentSelection.Rotation, CurrentSelection.OutputFlowDirection, CurrentTarget.ShipGrid);
+		LocalController->Server_RequestPlaceBelt(CurrentSelection.DefinitionID, CurrentTarget.GridCoord, CurrentSelection.RouteType, CurrentSelection.InputPort, CurrentSelection.OutputPort, CurrentTarget.ShipGrid);
 		break;
 		
 	default:
@@ -254,8 +326,6 @@ void UAtomicPlayerPlacementComponent::RotateBuildingPlacement(const float InputV
 	{
 		CurrentSelection.Rotation = UAtomicGridLibrary::RotateBuildingCounterClockwise(CurrentSelection.Rotation);
 	}
-	
-	SetBeltOutputToDefaultForCurrentRoute();
 }
 
 
@@ -265,469 +335,235 @@ void UAtomicPlayerPlacementComponent::RotateBuildingPlacement(const float InputV
 void UAtomicPlayerPlacementComponent::RotateBeltPlacement(const float InputValue)
 {
 	if (FMath::IsNearlyZero(InputValue)) return;
-	if (!CurrentTarget.IsValid()) return;
-	if (!CurrentTarget.ShipGrid || !CurrentTarget.ShipGrid->GetGridData()) return;
 
 	const bool bRotateClockwise = InputValue > 0.f;
-	
-	// From now on, the player is overriding the auto choice for this target cell.
 	bBeltRotationManuallyOverridden = true;
-	
-	TArray<FAtomicBeltPlacementCandidate> BeltPlacementCandidates;
-	BuildBeltPlacementCandidates(CurrentTarget, BeltPlacementCandidates);
-	
-	if (BeltPlacementCandidates.IsEmpty())
+
+	if (bBeltHasSnappedConnection)
 	{
-		// Rotate Belt Normally
-		CurrentSelection.Rotation = bRotateClockwise
-			? UAtomicGridLibrary::RotateBuildingClockwise(CurrentSelection.Rotation)
-			: UAtomicGridLibrary::RotateBuildingCounterClockwise(CurrentSelection.Rotation);
-		
-		EnsureOutputDirectionIsValidForCurrentBelt();
-		return;
+		CycleConnectedBeltRoute(bRotateClockwise);
+	}
+	else
+	{
+		RotateBeltRouteNormally(bRotateClockwise);
 	}
 	
-	// Build clockwise/counter-clockwise route order.
-	TArray<EBuildingRotation> RotationSearchOrder;
-	GetBeltRotationSearchOrder(CurrentSelection.Rotation, bRotateClockwise, RotationSearchOrder);
-	
-	// First Preference:
-	// Find the next route roation that has at least one valid connection.
-	for (const EBuildingRotation CandidateRotation : RotationSearchOrder)
-	{
-		if (CandidateRotation == CurrentSelection.Rotation)
-		{
-			continue;
-		}
-		
-		FAtomicBeltPlacementCandidate BestCandidateForRotation;
-		if (TryChooseBestOutputForRouteRotation(BeltPlacementCandidates, CandidateRotation, true, BestCandidateForRotation)) // require connection
-		{
-			// This picks the best OutputFlowDirection for this route rotation.
-			// It does Not cycle all output variants.
-			CurrentSelection.Rotation = BestCandidateForRotation.Rotation;
-			CurrentSelection.OutputFlowDirection = BestCandidateForRotation.OutputFlowDirection;
-			EnsureOutputDirectionIsValidForCurrentBelt();
-			return;
-		}
-	}
-	
-	// Second Preference:
-	// No connected route alternative exists.
-	// Force one normal rotation step so the player can still override.
-	const EBuildingRotation ForcedRotation = bRotateClockwise
-		? UAtomicGridLibrary::RotateBuildingClockwise(CurrentSelection.Rotation)
-		: UAtomicGridLibrary::RotateBuildingCounterClockwise(CurrentSelection.Rotation);
-	
-	FAtomicBeltPlacementCandidate BestForcedCandidate;
-	if (TryChooseBestOutputForRouteRotation(BeltPlacementCandidates, ForcedRotation, false, BestForcedCandidate)) // allow disconnected
-	{
-		CurrentSelection.Rotation = BestForcedCandidate.Rotation;
-		CurrentSelection.OutputFlowDirection = BestForcedCandidate.OutputFlowDirection;
-		EnsureOutputDirectionIsValidForCurrentBelt();
-		return;
-	}
-	
-	// Last fallback.
-	CurrentSelection.Rotation = BestForcedCandidate.Rotation;
-	SetBeltOutputToDefaultForCurrentRoute();
+	UpdatePlacementPreview();	
 }
 
-bool UAtomicPlayerPlacementComponent::TryGetOtherRoutePort(const TArray<EGridDirection>& RoutePorts, const EGridDirection KnownPort, EGridDirection& OutOtherPort) const
+void UAtomicPlayerPlacementComponent::CycleConnectedBeltRoute(const bool bRotateClockwise)
 {
-	if (RoutePorts.Num() != 2) return false;
+	if (!bBeltHasSnappedConnection) return;
 	
-	if (RoutePorts[0] == KnownPort)
+	if (SnappedBeltConnectionRole == EAtomicBeltConnectionRole::InputPort)
 	{
-		OutOtherPort = RoutePorts[1];
-		return true;
+		EGridDirection NextOutputPort = EGridDirection::East;
+		if (!TryGetNextOutputPortAroundInput(CurrentSelection.InputPort, CurrentSelection.OutputPort, bRotateClockwise, NextOutputPort))
+		{
+			return;
+		}
+	
+		EAtomicBeltRouteType NextRouteType = EAtomicBeltRouteType::Straight;
+		if (!UAtomicGridLibrary::TryGetRouteTypeForInputAndOutput(CurrentSelection.InputPort, NextOutputPort, NextRouteType))
+		{
+			return;
+		}
+	
+		SetCurrentBeltRoute(NextRouteType, CurrentSelection.InputPort);
+		return;
+	}
+	if (SnappedBeltConnectionRole == EAtomicBeltConnectionRole::OutputPort)
+	{
+		EGridDirection NextInputPort = EGridDirection::West;
+		if (!TryGetNextInputPortAroundOutput(CurrentSelection.OutputPort, CurrentSelection.InputPort, bRotateClockwise, NextInputPort))
+		{
+			return;
+		}
+	
+		EAtomicBeltRouteType NextRouteType = EAtomicBeltRouteType::Straight;
+		if (!UAtomicGridLibrary::TryGetRouteTypeForInputAndOutput(NextInputPort, CurrentSelection.OutputPort, NextRouteType))
+		{
+			return;
+		}
+	
+		SetCurrentBeltRoute(NextRouteType, CurrentSelection.OutputPort);
+		return;
 	}
 	
-	if (RoutePorts[1] == KnownPort)
+}
+
+bool UAtomicPlayerPlacementComponent::TryGetNextOutputPortAroundInput(const EGridDirection InputPort, const EGridDirection CurrentOutputPort, const bool bRotateClockwise, EGridDirection& OutNextOutputPort) const
+{
+	const int32 Step = bRotateClockwise ? 1 : -1;
+	
+	EGridDirection TestDirection = CurrentOutputPort;
+	
+	for (int32 Attempt = 0; Attempt < 4; ++Attempt)
 	{
-		OutOtherPort = RoutePorts[0];
-		return true;
+		const int32 CurrentIndex = static_cast<int32>(TestDirection);
+		const int32 NextIndex = UAtomicGridLibrary::WrapCardinalIndex(CurrentIndex + Step);
+		
+		TestDirection = static_cast<EGridDirection>(NextIndex);
+		if (TestDirection == InputPort) continue;
+		
+		EAtomicBeltRouteType TestRouteType;
+		if (UAtomicGridLibrary::TryGetRouteTypeForInputAndOutput(InputPort, TestDirection, TestRouteType))
+		{
+			OutNextOutputPort = TestDirection;
+			return true;
+		}
 	}
 	
 	return false;
 }
 
-// This preserves normal clockwise/counter-clockwise feel
-void UAtomicPlayerPlacementComponent::GetBeltRotationSearchOrder(const EBuildingRotation StartRotation, const bool bClockwise, TArray<EBuildingRotation>& OutRotations) const
+bool UAtomicPlayerPlacementComponent::TryGetNextInputPortAroundOutput(const EGridDirection OutputPort, const EGridDirection CurrentInputPort, const bool bRotateClockwise, EGridDirection& OutNextInputPort) const
 {
-	OutRotations.Reset();
+	const int32 Step = bRotateClockwise ? 1 : -1;
 	
-	EBuildingRotation TestRotation = StartRotation;
+	EGridDirection TestDirection = CurrentInputPort;
 	
-	for (int32 Step = 0; Step < 4; ++Step)
+	for (int32 Attempt = 0; Attempt < 4; ++Attempt)
 	{
-		TestRotation = bClockwise 
-			? UAtomicGridLibrary::RotateBuildingClockwise(TestRotation)
-			: UAtomicGridLibrary::RotateBuildingCounterClockwise(TestRotation);
+		const int32 CurrentIndex = static_cast<int32>(TestDirection);
+		const int32 NextIndex = UAtomicGridLibrary::WrapCardinalIndex(CurrentIndex + Step);
 		
-		OutRotations.Add(TestRotation);
+		TestDirection = static_cast<EGridDirection>(NextIndex);
+		if (TestDirection == OutputPort) continue;
+		
+		EAtomicBeltRouteType TestRouteType;
+		if (UAtomicGridLibrary::TryGetRouteTypeForInputAndOutput(TestDirection, OutputPort, TestRouteType))
+		{
+			OutNextInputPort = TestDirection;
+			return true;
+		}
 	}
+	
+	return false;
 }
 
-// After any rotation/shape change, make sure output is still physically possible.
-void UAtomicPlayerPlacementComponent::EnsureOutputDirectionIsValidForCurrentBelt()
+void UAtomicPlayerPlacementComponent::RotateBeltRouteNormally(const bool bRotateClockwise)
 {
-	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(CurrentSelection.BeltShape, CurrentSelection.Rotation);
-	if (RoutePorts.Contains(CurrentSelection.OutputFlowDirection))
-	{
-		return;
-	}
+	const EBuildingRotation CurrentRotation = UAtomicGridLibrary::GetBuildingRotationForInputPort(CurrentSelection.InputPort);
 	
-	SetBeltOutputToDefaultForCurrentRoute();
+	const EBuildingRotation NewRotation = bRotateClockwise 
+		? UAtomicGridLibrary::RotateBuildingClockwise(CurrentRotation)
+		: UAtomicGridLibrary::RotateBuildingCounterClockwise(CurrentRotation);
+	
+	const EGridDirection NewInputPort = UAtomicGridLibrary::GetInputPortForBuildingRotation(NewRotation);
+	
+	SetCurrentBeltRoute(CurrentSelection.RouteType, NewInputPort);
 }
 
-void UAtomicPlayerPlacementComponent::SetBeltOutputToDefaultForCurrentRoute()
+void UAtomicPlayerPlacementComponent::SetCurrentBeltRoute(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort)
 {
-	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(CurrentSelection.BeltShape, CurrentSelection.Rotation);
-	
-	// Convention:
-	// RoutePorts[0] = default input side
-	// RoutePorts[1] = default output side
-	if (RoutePorts.Num() >= 2)
-	{
-		CurrentSelection.OutputFlowDirection = RoutePorts[1];
-		return;
-	}
-	
-	if (RoutePorts.Num() == 1)
-	{
-		CurrentSelection.OutputFlowDirection = RoutePorts[0];
-		return;
-	}
-	
-	CurrentSelection.OutputFlowDirection = EGridDirection::East;
+	CurrentSelection.RouteType = RouteType;
+	CurrentSelection.InputPort = InputPort;
+	CurrentSelection.OutputPort = UAtomicGridLibrary::GetOutputPortForInput(RouteType, InputPort);
+	CurrentSelection.Rotation = UAtomicGridLibrary::GetBuildingRotationForInputPort(InputPort);
 }
 
-void UAtomicPlayerPlacementComponent::FlipBeltFlowDirection()
+void UAtomicPlayerPlacementComponent::SetCurrentBeltRouteFromInput(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort)
 {
-	if (CurrentSelection.PlacementMode != EPlacementMode::Belt) return;
-	
-	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(CurrentSelection.BeltShape, CurrentSelection.Rotation);
-	if (RoutePorts.Num() != 2) return;
-	
-	CurrentSelection.OutputFlowDirection = (CurrentSelection.OutputFlowDirection == RoutePorts[0]) ? RoutePorts[1] : RoutePorts[0];
-	bBeltRotationManuallyOverridden = true;
+	CurrentSelection.RouteType = RouteType;
+	CurrentSelection.InputPort = InputPort;
+	CurrentSelection.OutputPort = UAtomicGridLibrary::GetOutputPortForInput(RouteType, InputPort);
+	CurrentSelection.Rotation = UAtomicGridLibrary::GetBuildingRotationForInputPort(InputPort);
 }
 
-// ---------------------------------------------------------------------
-// Belt Placement Candidates
-// ---------------------------------------------------------------------
+void UAtomicPlayerPlacementComponent::SetCurrentBeltRouteFromOutput(const EAtomicBeltRouteType RouteType, const EGridDirection OutputPort)
+{
+	EGridDirection InputPort = EGridDirection::West;
+	if (!UAtomicGridLibrary::TryGetInputPortForRouteTypeAndOutput(RouteType, OutputPort, InputPort)) return;
+	
+	CurrentSelection.RouteType = RouteType;
+	CurrentSelection.InputPort = InputPort;
+	CurrentSelection.OutputPort = OutputPort;
+	CurrentSelection.Rotation = UAtomicGridLibrary::GetBuildingRotationForInputPort(InputPort);
+}
+
 void UAtomicPlayerPlacementComponent::UpdateAutoBeltSelectionForTarget(const FAtomicPlacementTarget& Target)
 {
 	if (CurrentSelection.PlacementMode != EPlacementMode::Belt) return;
 	if (!Target.IsValid()) return;
 	if (!Target.ShipGrid || !Target.ShipGrid->GetGridData()) return;
 	
+	// Target Changed?
 	const bool bTargetChanged = LastTargetGridIndex != Target.GridIndex || LastTargetShipGrid.Get() != Target.ShipGrid;
-	if (bTargetChanged)
-	{
-		LastTargetGridIndex = Target.GridIndex;
-		LastTargetShipGrid = Target.ShipGrid;
-		
-		// New cell = allow auto-connect again.
-		bBeltRotationManuallyOverridden = false;
-	}
+	if (!bTargetChanged) return;
 	
-	// Player manually rotated on this target cell.
-	// Do not fight player's rotation
-	if (bBeltRotationManuallyOverridden)
-	{
-		EnsureOutputDirectionIsValidForCurrentBelt();
-		return;
-	}
-	
-	TArray<FAtomicBeltPlacementCandidate> BeltPlacementCandidates;
-	BuildBeltPlacementCandidates(Target, BeltPlacementCandidates);
+	LastTargetGridIndex = Target.GridIndex;
+	LastTargetShipGrid = Target.ShipGrid;
 
-	FAtomicBeltPlacementCandidate BestCandidate;
+	bBeltRotationManuallyOverridden = false;
+	bBeltInputSnappedToNeighbour = false;
+	bBeltHasSnappedConnection = false;
+	SnappedBeltConnectionRole = EAtomicBeltConnectionRole::None;
 	
-	// Auto-default should only snap if there is at least one real connection.
-	// if there are no neighbours, preserve the player's current/default rotation.
-	if (TryChooseBestBeltCandidate(BeltPlacementCandidates, true, BestCandidate))
+	EGridDirection ConnectedPort = EGridDirection::West;
+	EAtomicBeltConnectionRole ConnectionRole = EAtomicBeltConnectionRole::None;
+	
+	if (TryFindSnappedConnectionFromNeighbour(Target, ConnectedPort, ConnectionRole))
 	{
-		CurrentSelection.Rotation = BestCandidate.Rotation;
-		CurrentSelection.OutputFlowDirection = BestCandidate.OutputFlowDirection;
-		EnsureOutputDirectionIsValidForCurrentBelt();
-		return;
+		bBeltHasSnappedConnection = true;
+		SnappedBeltConnectedPort = ConnectedPort;
+		SnappedBeltConnectionRole = ConnectionRole;
+		
+		if (ConnectionRole == EAtomicBeltConnectionRole::InputPort)
+		{
+			SetCurrentBeltRouteFromInput(CurrentSelection.InitialRouteType, ConnectedPort);
+		}
+		else if (ConnectionRole == EAtomicBeltConnectionRole::OutputPort)
+		{
+			SetCurrentBeltRouteFromOutput(CurrentSelection.InitialRouteType, ConnectedPort);
+		}
 	}
-	
-	// Isolated belt. Keep current rotation, just make sure output is valid.
-	EnsureOutputDirectionIsValidForCurrentBelt();
 }
 
-void UAtomicPlayerPlacementComponent::BuildBeltPlacementCandidates(const FAtomicPlacementTarget& Target, TArray<FAtomicBeltPlacementCandidate>& OutCandidates) const
+bool UAtomicPlayerPlacementComponent::TryFindSnappedConnectionFromNeighbour(const FAtomicPlacementTarget& Target, EGridDirection& OutConnectedPort, EAtomicBeltConnectionRole& OutConnectionRole) const
 {
-	OutCandidates.Reset();
+	OutConnectedPort = EGridDirection::West;
+	OutConnectionRole = EAtomicBeltConnectionRole::None;
 	
-	if (!Target.IsValid()) return;
-	if (!Target.ShipGrid || !Target.ShipGrid->GetGridData()) return;
+	if (!Target.IsValid()) return false;
+	if (!Target.ShipGrid || !Target.ShipGrid->GetGridData()) return false;
 	
 	const UAtomicGridDataComponent* GridData = Target.ShipGrid->GetGridData();
 	
-	for (const EBuildingRotation CandidateRotation : AllRotations)
+	for (const EGridDirection DirectionToNeighbour : AllDirections)
 	{
-		const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(CurrentSelection.BeltShape, CandidateRotation);
-		if (RoutePorts.IsEmpty()) continue;
-		
-		TArray<EGridDirection> ConnectedRoutePorts;
-		GridData->GetConnectedRoutePortsForBeltCandidate(Target.GridIndex, CurrentSelection.BeltShape, CandidateRotation, ConnectedRoutePorts);
-		
-		for (const EGridDirection OutputDirection : RoutePorts)
+		const FAtomicBeltRecord* NeighbourBelt = GridData->GetNeighbourBeltRecord(Target.GridIndex, DirectionToNeighbour);
+		if (!NeighbourBelt)
 		{
-			FAtomicBeltPlacementCandidate Candidate;
-			Candidate.Shape = CurrentSelection.BeltShape;
-			Candidate.Rotation = CandidateRotation;
-			Candidate.OutputFlowDirection = OutputDirection;
-			Candidate.RoutePorts = RoutePorts;
-			Candidate.ConnectedRoutePorts = ConnectedRoutePorts;
-			Candidate.Score = ScoreBeltPlacementCandidate(Target, Candidate);
-			
-			OutCandidates.Add(Candidate);
+			continue;
+		}
+		
+		const EGridDirection NeighbourPortFacingPreview = UAtomicGridLibrary::OppositeGridDirection(DirectionToNeighbour);
+		
+		// Case 1:
+		// Neighbour outputs into this preview cell.
+		// Preview connected side is its InputPort.
+		if (NeighbourBelt->OutputPort == NeighbourPortFacingPreview)
+		{
+			OutConnectedPort = DirectionToNeighbour;
+			OutConnectionRole = EAtomicBeltConnectionRole::InputPort;
+			return true;
+		}
+		
+		// Case 2:
+		// Neighbour input faces this preview cell.
+		// Preview connected side is its OutputPort.
+		if (NeighbourBelt->InputPort == NeighbourPortFacingPreview)
+		{
+			OutConnectedPort = DirectionToNeighbour;
+			OutConnectionRole = EAtomicBeltConnectionRole::OutputPort;
+			return true;
 		}
 	}
+	
+	return false;
 }
 
-bool UAtomicPlayerPlacementComponent::TryChooseBestBeltCandidate(const TArray<FAtomicBeltPlacementCandidate>& Candidates, const bool bRequireConnection, FAtomicBeltPlacementCandidate& OutBestCandidate) const
-{
-	bool bFound = false;
-	int32 BestScore = MIN_int32;
-
-	for (const FAtomicBeltPlacementCandidate& Candidate : Candidates)
-	{
-		if (bRequireConnection && Candidate.ConnectedRoutePorts.IsEmpty())
-		{
-			continue;
-		}
-		
-		if (!bFound || Candidate.Score > BestScore)
-		{
-			bFound = true;
-			BestScore = Candidate.Score;
-			OutBestCandidate = Candidate;
-		}
-	}
-	
-	return bFound;
-}
-
-// Choose Best OUTPUT direction for route rotation
-bool UAtomicPlayerPlacementComponent::TryChooseBestOutputForRouteRotation(const TArray<FAtomicBeltPlacementCandidate>& Candidates, const EBuildingRotation Rotation, const bool bRequireConnection, FAtomicBeltPlacementCandidate& OutBestCandidate) const
-{
-	bool bFound = false;
-	int32 BestScore = MIN_int32;
-
-	for (const FAtomicBeltPlacementCandidate& Candidate : Candidates)
-	{
-		if (Candidate.Rotation != Rotation)
-		{
-			continue;
-		}
-		
-		if (bRequireConnection && Candidate.ConnectedRoutePorts.IsEmpty())
-		{
-			continue;
-		}
-		
-		if (!bFound || Candidate.Score > BestScore)
-		{
-			bFound = true;
-			BestScore = Candidate.Score;
-			OutBestCandidate = Candidate;
-		}
-	}
-	
-	return bFound;
-}
-
-int32 UAtomicPlayerPlacementComponent::ScoreBeltPlacementCandidate(const FAtomicPlacementTarget& Target, const FAtomicBeltPlacementCandidate& Candidate) const
-{
-	// This function is only a heuristic.
-	// It does Not validate final placement.
-	// It answers: "How good does this route rotation + output direction feel for auto-preview?"
-	
-	// Why These Score Values? (Priority Bands)
-	// +1000 per connection		= physical route connection matters most
-	// +500-ish flow score		= logical item movement matters second
-	// +20/30/60 tie-breakers	= preserve current/player intent
-	// +40 isolated default		= make no-neighbour belts predictable
-	
-	static constexpr int32 InvalidScore = -1000000;
-	
-	if (!Target.IsValid()) return InvalidScore;
-	if (!Target.ShipGrid || !Target.ShipGrid->GetGridData()) return InvalidScore;
-	
-	// Output direction must always be one of the belt's route ports.
-	if (!Candidate.RoutePorts.Contains(Candidate.OutputFlowDirection)) return InvalidScore;
-
-	const UAtomicGridDataComponent* GridData = Target.ShipGrid->GetGridData();
-	
-	int32 Score = 0;
-	
-	// 1. CONNECTION SCORE:
-	// A belt that physically connects to more reciprocal neighbour ports should usually be preferred over one that floats disconnected.
-	const int32 ConnectedPortCount = Candidate.ConnectedRoutePorts.Num();
-	Score += ConnectedPortCount * 1000;
-	
-	// Small bonus for fully connected 2-port belts.
-	// Straight/Corner with both route ports connected should generally be preferred.
-	if (ConnectedPortCount == Candidate.RoutePorts.Num() && Candidate.RoutePorts.Num() > 0)
-	{
-		Score += 250;
-	}
-	
-	// Small penalty for disconnected candidates.
-	// Do not make this huge, because isolated placement is still valid.
-	if (ConnectedPortCount == 0)
-	{
-		Score -= 50;
-	}
-	
-	
-	// 2. FLOW COMPATIBILITY SCORE:
-	// For each connected route port, inspect the neighbouring belt's output.
-	//
-	// Candidate Cell: ConnectedPort = direction from candidate TO neighbour.
-	// Neighbour Cell: NeighbourPortTowardCandidate = opposite side
-	//
-	// Example:
-	//		Candidate has neighbour on West
-	//		ConnectedPort = West
-	//		NeighbourPortTowardCandidate = East
-	//
-	// If neighbour outputs East, it is sending items into this candidate.
-	// Then this candidate should output somewhere else, not back into the neighbour.
-
-	for (const EGridDirection ConnectedPort : Candidate.ConnectedRoutePorts)
-	{
-		const FAtomicBeltRecord* NeighbourBelt = Target.ShipGrid->GetGridData()->GetNeighbourBeltRecord(Target.GridIndex, ConnectedPort);
-		if (!NeighbourBelt) continue;
-		
-		const EGridDirection NeighbourPortTowardCandidate = UAtomicGridLibrary::OppositeGridDirection(ConnectedPort);
-		const TArray<EGridDirection> NeighbourRoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(NeighbourBelt->Shape, NeighbourBelt->Rotation);
-		
-		// This should already be true if ConnectedRoutePorts was built correctly.
-		if (!NeighbourRoutePorts.Contains(NeighbourPortTowardCandidate)) continue;
-		
-		const bool bCandidateOutputsTowardNeighbour = Candidate.OutputFlowDirection == ConnectedPort;
-		const bool bNeighbourOutputsTowardCandidate = NeighbourBelt->OutputFlowDirection == NeighbourPortTowardCandidate;
-		
-		// Best Case: Neighbour sends into candidate, candidate sends away.
-		// Flow: Neighbour -> Candidate -> Other Side
-		if (bNeighbourOutputsTowardCandidate && !bCandidateOutputsTowardNeighbour)
-		{
-			Score += 500;
-			continue;
-		}
-		
-		// Also Good: Candidate sends into neighbour, and neighbour is not outputting back.
-		// Flow: Candidate -> Neighbour -> Other Side
-		if (!bNeighbourOutputsTowardCandidate && bCandidateOutputsTowardNeighbour)
-		{
-			Score += 450;
-			continue;
-		}
-		
-		// Bad: Both belts output into each other.
-		// Flow: Candidate -> <- Neighbour
-		if (bNeighbourOutputsTowardCandidate && bCandidateOutputsTowardNeighbour)
-		{
-			Score -= 350;
-			continue;
-		}
-		
-		// Weird / Weak Case: Both belts output away from the connection.
-		// Flow: Candidate <- connection -> Neighbour
-		Score -= 100;
-	}
-	
-	// 3. PRESERVE CURRENT PREVIEW INTENT WHERE POSSIBLE
-	// These are small tie-breakers.
-	// They should never overpower actual connection + flow scoring.
-	if (Candidate.Rotation == CurrentSelection.Rotation)
-	{
-		Score += 20;
-	}
-	
-	if (Candidate.OutputFlowDirection == CurrentSelection.OutputFlowDirection)
-	{
-		Score += 50;
-	}
-	
-	// Try to preserve old input side if possible.
-	// For simple 2-port belts: Input = the route port that is not output.
-	// This helps rotation feel stable instead of randomly flipping flow.
-	TArray<EGridDirection> CurrentRoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(CurrentSelection.BeltShape, CurrentSelection.Rotation);
-	if (CurrentRoutePorts.Num() == 2 && CurrentRoutePorts.Contains(CurrentSelection.OutputFlowDirection))
-	{
-		EGridDirection CurrentInputDirection = CurrentRoutePorts[0];
-		if (CurrentRoutePorts[0] == CurrentSelection.OutputFlowDirection)
-		{
-			CurrentInputDirection = CurrentRoutePorts[1];
-		}
-		
-		// If the new candidate still has the previous input side, prefer using the other route port as output.
-		if (Candidate.RoutePorts.Contains(CurrentInputDirection) && Candidate.OutputFlowDirection != CurrentInputDirection)
-		{
-			Score += 60;
-		}
-	}
-	
-	// 4. DEFAULT ISOLATED-BELT PREFERENCE
-	// If there are no connections, prefer authoring default:
-	// RoutePort[0] = input side
-	// RoutePort[1] = output side
-	if (ConnectedPortCount == 0 && Candidate.RoutePorts.Num() >= 2)
-	{
-		const EGridDirection DefaultOutputDirection = Candidate.RoutePorts[1];
-		if (Candidate.OutputFlowDirection == DefaultOutputDirection)
-		{
-			Score += 40;
-		}
-	}
-	
-	return Score;
-}
-
-EGridDirection UAtomicPlayerPlacementComponent::ChooseOutputDirectionForBeltCandidate(const EAtomicBeltShape BeltShape, const EBuildingRotation OldRotation, const EGridDirection OldOutputDirection,
-																					  const EBuildingRotation CandidateRotation, const TArray<EGridDirection>& ConnectedPorts) const
-{
-	const TArray<EGridDirection> CandidateRoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(BeltShape, CandidateRotation);
-	
-	// 1. Prefer keeping the same output flow direction.
-	if (CandidateRoutePorts.Contains(OldOutputDirection))
-	{
-		return OldOutputDirection;
-	}
-	
-	// 2. Prefer preserving old input side, then redirecting output.
-	EGridDirection OldInputDirection;
-	if (FAtomicBeltTopologyRules::TryGetInputGridDirection(BeltShape, OldRotation, OldOutputDirection, OldInputDirection))
-	{
-		EGridDirection NewOutputDirection;
-		if (TryGetOtherRoutePort(CandidateRoutePorts, OldInputDirection, NewOutputDirection))
-		{
-			return NewOutputDirection;
-		}
-	}
-	
-	// 3. If connected to one neighbour, treat that side as input and output away from it.
-	if (ConnectedPorts.Num() == 1)
-	{
-		EGridDirection NewOutputDirection;
-		if (TryGetOtherRoutePort(CandidateRoutePorts, ConnectedPorts[0], NewOutputDirection))
-		{
-			return NewOutputDirection;
-		}
-	}
-	
-	// 4. Fallback.
-	return CandidateRoutePorts.IsEmpty() ? EGridDirection::East : CandidateRoutePorts[0];
-}
 
 // ---------------------------------------------------------------------
 // Placement Distance
@@ -798,7 +634,7 @@ void UAtomicPlayerPlacementComponent::UpdatePlacementPreview()
 		return;
 	}
 	
-	// Auto belt selection must happen after target is found and before BuildPlacementPreview()
+	// Auto belt selection must happen After target is found and Before BuildPlacementPreview()
 	if (CurrentSelection.PlacementMode == EPlacementMode::Belt)
 	{
 		UpdateAutoBeltSelectionForTarget(CurrentTarget);
@@ -992,28 +828,33 @@ bool UAtomicPlayerPlacementComponent::BuildBuildingPreview(const FAtomicPlacemen
 bool UAtomicPlayerPlacementComponent::BuildBeltPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& OutResult) const
 {
 	if (!CurrentSelection.IsValid()) return false;
-	if (!Target.ShipGrid) return false;
+	if (!Target.IsValid() || !Target.ShipGrid || !Target.ShipGrid->GetGridData() || !Target.ShipGrid->GetGridVisualComponent()) return false;
+	
+	const UAtomicBeltDefinition* Definition = CurrentSelection.BeltDefinition;
+	if (!Definition) return false;
 
 	FAtomicBeltRecord PreviewRecord;
 	PreviewRecord.InstanceID = FGuid();
-	PreviewRecord.BeltID = CurrentSelection.DefinitionID;
+	PreviewRecord.DefinitionID = CurrentSelection.DefinitionID;
 	PreviewRecord.CellIndex = Target.GridIndex;
-	PreviewRecord.Shape = CurrentSelection.BeltShape;
-	PreviewRecord.Rotation = CurrentSelection.Rotation;
-	PreviewRecord.OutputFlowDirection = CurrentSelection.OutputFlowDirection;
+	PreviewRecord.RouteType = CurrentSelection.RouteType;
+	PreviewRecord.InputPort = CurrentSelection.InputPort;
+	PreviewRecord.OutputPort = CurrentSelection.OutputPort;
 	
 	FAtomicResolvedPreviewBelt ResolvedPreview;
-	if (!Target.ShipGrid->ResolveBeltPreviewVisual(PreviewRecord, ResolvedPreview)) return false;
-	
-	const UAtomicBeltDefinition* Definition = CurrentSelection.BeltDefinition;
-	
+	if (!Target.ShipGrid->GetGridVisualComponent()->ResolveBeltVisualForPreviewRecord(PreviewRecord, ResolvedPreview))
+	{
+		//CancelPlacement();
+		return false;
+	}
+		
 	OutResult.Mesh = Definition->GetMeshForVariant(ResolvedPreview.VisualVariant);
 	OutResult.Material = Definition->PreviewMaterial.Get();
 	
 	OutResult.WorldLocation = UAtomicGridLibrary::GridToWorld(Target.GridCoord, Target.GridTransform, Target.CellSize);
 	OutResult.WorldRotation = FRotator(0.f, UAtomicGridLibrary::BuildingRotationToYawDegrees(ResolvedPreview.VisualRotation), 0.f);
 	
-	OutResult.bCanPlace = Target.ShipGrid->GetGridPlacementComponent()->CanPlaceBelt(Definition, Target.GridCoord, CurrentSelection.BeltShape, CurrentSelection.Rotation, CurrentSelection.OutputFlowDirection);
+	OutResult.bCanPlace = Target.ShipGrid->GetGridPlacementComponent()->CanPlaceBelt(Definition, Target.GridCoord, CurrentSelection.RouteType, CurrentSelection.InputPort, CurrentSelection.OutputPort);
 	
 	OutResult.bShowGhost = OutResult.Mesh != nullptr && OutResult.Material != nullptr;
 	OutResult.PreviewCells = { Target.GridCoord };
@@ -1146,8 +987,11 @@ void UAtomicPlayerPlacementComponent::DrawDebugBuildingPreview(const FAtomicPlac
 
 void UAtomicPlayerPlacementComponent::DrawDebugBeltPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& PreviewResult) const
 {
+	if (!PreviewResult.bHasResolvedBelt) return;
+	
 	const UWorld* World = GetWorld();
 	if (!World) return;
+	
 	if (!CurrentSelection.BeltDefinition) return;
 	if (!Target.ShipGrid || !Target.ShipGrid->GetGridData()) return;
 
@@ -1166,7 +1010,7 @@ void UAtomicPlayerPlacementComponent::DrawDebugBeltPreview(const FAtomicPlacemen
 	}
 	
 	// Main flow arrow
-	const EGridDirection OutputDirection = PreviewResult.ResolvedPreviewBelt.OutputFlowDirection;
+	const EGridDirection OutputDirection = PreviewResult.ResolvedPreviewBelt.OutputPort;
 	const FVector FlowLocalDirection = UAtomicGridLibrary::GridDirectionToVector(OutputDirection);
 	const FVector FlowWorldDirection = Target.GridTransform.TransformVectorNoScale(FlowLocalDirection).GetSafeNormal();
 	const FVector FlowArrowStart = CellCenter + FVector(0.f, 0.f, 70.f);
@@ -1176,9 +1020,9 @@ void UAtomicPlayerPlacementComponent::DrawDebugBeltPreview(const FAtomicPlacemen
 	
 	// Belt Shape Text
 	const FString BeltString = FString::Printf(
-		TEXT("Belt Shape: %s"),
-		*UEnum::GetValueAsString(CurrentSelection.BeltShape)
+		TEXT("Belt Shape: %s\nSelection Rotation: %s\nVisual Rotation: %s\nOutput Flow: %s\nVisual Variant: %s"),
+		*UEnum::GetValueAsString(CurrentSelection.RouteType), *UEnum::GetValueAsString(CurrentSelection.Rotation), *UEnum::GetValueAsString(PreviewResult.ResolvedPreviewBelt.VisualRotation),
+		*UEnum::GetValueAsString(CurrentSelection.OutputPort), *UEnum::GetValueAsString(PreviewResult.ResolvedPreviewBelt.VisualVariant)
 	);
 	DrawDebugString(World, CellCenter + FVector(0.f, 0.f, 150.f), BeltString, nullptr, FColor::Purple, 0.f, true, 1.1f);
 }
-

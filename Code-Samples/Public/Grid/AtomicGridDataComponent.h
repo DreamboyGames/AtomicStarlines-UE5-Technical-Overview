@@ -33,23 +33,27 @@ public:
 	
 	void InitializeGrid();
 	
-	const TArray<FAtomicBuildingRecord>& GetPlacedBuildingRecords() const { return BuildingRecords.Items; }
-	const TArray<FAtomicBeltRecord>& GetPlacedBeltRecords() const { return BeltRecords.Items; }
-
+	// ---------------------------------------------------------------------
+	// GRID
+	// ---------------------------------------------------------------------
 	float GetCellSize() const { return CellSize; }
 	FIntVector GetGridSize() const { return GridSize; }
-	
+
 	const FAtomicGridCell* GetCell(const FIntVector& Coord) const;
 	const FAtomicGridCell* GetCell(const int32 Index) const;
-	
-	bool IsCellBuildable(const int32 Index) const;	
+
+	bool IsCellBuildable(const int32 Index) const;
 	bool MarkCellsOccupied(const TArray<FIntVector>& CellCoords, const FGuid& InstanceID, const EGridOccupancyType OccupancyType);
 	bool MarkCellOccupied(const FIntVector CellCoord, const FGuid& InstanceID, const EGridOccupancyType OccupancyType);
-	
+	// ---------------------------------------------------------------------
+
 	
 	// ---------------------------------------------------------------------
 	// BUILD RECORDS
 	// ---------------------------------------------------------------------
+	const TArray<FAtomicBuildingRecord>& GetPlacedBuildingRecords() const { return BuildingRecords.Items; }
+	const TArray<FAtomicBeltRecord>& GetPlacedBeltRecords() const { return BeltRecords.Items; }
+	
 	bool AddBuildingRecord(const FAtomicBuildingRecord& NewRecord);
 	void MarkBuildingRecordChanged(FAtomicBuildingRecord& Record);
 	bool RemoveBuildingRecord(const FGuid& BuildInstanceID);
@@ -80,11 +84,17 @@ public:
 	FAtomicBeltRecord* FindBeltRecordAtIndex(const int32 Index);
 	const FAtomicBeltRecord* FindBeltRecordAtIndex(const int32 Index) const;
 	const FAtomicBeltRecord* GetNeighbourBeltRecord(const int32 Index, const EGridDirection Direction) const;
+
+	void GetRoutePortsForBeltRecord(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutRoutePorts) const;
+	void GetConnectedRoutePortsForBeltRecord(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutConnectedRoutePorts) const;
+	void GetConnectedRoutePortsForBeltCandidate(const int32 CellIndex, const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, const EGridDirection OutputPort, TArray<EGridDirection>& OutConnectedRoutePorts) const;
+
+	bool DoesBeltRecordHavePort(const FAtomicBeltRecord& BeltRecord, EGridDirection Port) const;
 	bool HasReciprocalBeltConnectionAtPort(const int32 Index, const EGridDirection PortDirection) const;
 	bool HasAnyNeighbourBeltConnection(const int32 Index) const;
-	void GetConnectedRoutePortsForBeltRecord(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutConnectedPorts) const;
-	void GetConnectedRoutePortsForBeltCandidate(const int32 CellIndex, const EAtomicBeltShape Shape, const EBuildingRotation Rotation, TArray<EGridDirection>& OutConnectedPorts) const;
 
+	// ---------------------------------------------------------------------
+	
 	
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AtomicGrid")

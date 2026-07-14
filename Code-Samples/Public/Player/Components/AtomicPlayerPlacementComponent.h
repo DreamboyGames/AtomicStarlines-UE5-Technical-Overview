@@ -12,7 +12,7 @@
 #include "AtomicPlayerPlacementComponent.generated.h"
 
 class UAtomicBuildingRegistrySubsystem;
-enum class EAtomicBeltShape : uint8;
+enum class EAtomicBeltRouteType : uint8;
 class UAtomicBeltDefinition;
 class AAtomicPlacementGhostActor;
 class UAtomicBuildingDefinition;
@@ -93,18 +93,24 @@ struct FAtomicPlacementSelection {
 	
 	UPROPERTY()
 	TObjectPtr<const UAtomicBeltDefinition> BeltDefinition = nullptr;
-	
-	UPROPERTY()
-	EAtomicBeltShape BeltShape = EAtomicBeltShape::Straight;
-	
-	// Topology Direction, visual route orientation.
-	// Preferred route rotation.
+
+	// Building Rotation, and
+	// Route Rotation: which sides this belt can connect to, e.g. (E,W) or (E,S)
 	UPROPERTY()
 	EBuildingRotation Rotation = EBuildingRotation::East;
 	
-	// Flow Direction, item Output port
+	// Tool player selected
 	UPROPERTY()
-	EGridDirection OutputFlowDirection = EGridDirection::East;
+	EAtomicBeltRouteType InitialRouteType = EAtomicBeltRouteType::Straight;
+	
+	UPROPERTY()
+	EAtomicBeltRouteType RouteType = EAtomicBeltRouteType::Straight;
+
+	UPROPERTY()
+	EGridDirection InputPort = EGridDirection::West;
+	
+	UPROPERTY()
+	EGridDirection OutputPort = EGridDirection::East;
 	
 	bool IsValid() const
 	{
@@ -127,11 +133,10 @@ struct FAtomicPlacementSelection {
 		DefinitionID = NAME_None;
 		BuildingDefinition = nullptr;
 		BeltDefinition = nullptr;
-		BeltShape = EAtomicBeltShape::Straight;
+		RouteType = EAtomicBeltRouteType::Straight;
 		Rotation = EBuildingRotation::East;
 	}
 };
-
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class ATOMICSTARLINES_API UAtomicPlayerPlacementComponent : public UActorComponent {
@@ -145,15 +150,16 @@ public:
 	
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
+	// START PLACEMENT
 	bool StartPlacementWithSelectedBuilding(const FName BuildingID);
-	bool StartPlacementWithSelectedBelt(const FName BeltID, const EAtomicBeltShape BeltShape);
-	
-	void CancelPlacement();
+	bool StartPlacementWithSelectedBelt(const FName BeltID, const EAtomicBeltRouteType InitialRouteType);
+
 	void RotatePlacement(const float InputValue);
 	
+	// CONFIRM / CANCEL PLACEMENT
 	void ConfirmPlacement();
+	void CancelPlacement();
 
-	
 protected:
 	UPROPERTY(EditAnywhere, Category="AtomicPlacement")
 	float PlacementDistance;
@@ -187,46 +193,58 @@ protected:
 	
 	
 private:	
+	// Update Preview Ghost
 	void UpdatePlacementPreview();
 	bool FindPlacementTarget(FAtomicPlacementTarget& OutTarget);
 	void ApplyPlacementPreview(const FAtomicPlacementPreviewResult& PreviewResult);
-	void DrawDebugPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& PreviewResult) const;
 
 	void EnsureGhostActor();
 	void HidePlacementPreview() const;
+
+	// Start/Clear Placement
+	void StartPlacement();
+	void ClearSelectedPlacement();
 	
+	// Build Preview
 	bool BuildPlacementPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& OutResult) const;
 	bool BuildBuildingPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& OutResult) const;
 	bool BuildBeltPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& OutResult) const;
 	bool BuildWallPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& PreviewResult) const;
 
+	// Rotation
+	void RotateBuildingPlacement(const float InputValue);
 	void UpdatePlacementDistanceFromStep();
 	
-	void RotateBuildingPlacement(const float InputValue);
 	void RotateBeltPlacement(const float InputValue);
+	void RotateBeltRouteNormally(const bool bRotateClockwise);
 
+	// Belt Helpers
 	void UpdateAutoBeltSelectionForTarget(const FAtomicPlacementTarget& Target);
-	void BuildBeltPlacementCandidates(const FAtomicPlacementTarget& Target, TArray<FAtomicBeltPlacementCandidate>& OutCandidates) const;
-	int32 ScoreBeltPlacementCandidate(const FAtomicPlacementTarget& Target, const FAtomicBeltPlacementCandidate& Candidate) const;
-	bool TryChooseBestBeltCandidate(const TArray<FAtomicBeltPlacementCandidate>& Candidates, const bool bRequireConnection, FAtomicBeltPlacementCandidate& OutBestCandidate) const;
-	bool TryChooseBestOutputForRouteRotation(const TArray<FAtomicBeltPlacementCandidate>& Candidates, const EBuildingRotation Rotation, const bool bRequireConnection, FAtomicBeltPlacementCandidate& OutBestCandidate) const;
-	EGridDirection ChooseOutputDirectionForBeltCandidate(const EAtomicBeltShape BeltShape, const EBuildingRotation OldRotation, const EGridDirection OldOutputDirection, const EBuildingRotation CandidateRotation, const TArray<EGridDirection>& ConnectedPorts) const;
+	bool TryFindSnappedConnectionFromNeighbour(const FAtomicPlacementTarget& Target, EGridDirection& OutConnectedPort, EAtomicBeltConnectionRole& OutConnectionRole) const;
+	
+	void SetCurrentBeltRoute(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort);
+	void SetCurrentBeltRouteFromInput(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort);
+	void SetCurrentBeltRouteFromOutput(const EAtomicBeltRouteType RouteType, const EGridDirection OutputPort);
 
-	void GetBeltRotationSearchOrder(const EBuildingRotation StartRotation, const bool bClockwise, TArray<EBuildingRotation>& OutRotations) const;
-	bool TryGetOtherRoutePort(const TArray<EGridDirection>& RoutePorts, const EGridDirection KnownPort, EGridDirection& OutOtherPort) const;
-	void SetBeltOutputToDefaultForCurrentRoute();
-	void EnsureOutputDirectionIsValidForCurrentBelt();
-	void FlipBeltFlowDirection();
-	
-	void StartPlacement();
-	void ClearSelectedPlacement();
-	
+	void CycleConnectedBeltRoute(const bool bRotateClockwise);
+	bool TryGetNextOutputPortAroundInput(const EGridDirection InputPort, const EGridDirection CurrentOutputPort, const bool bRotateClockwise, EGridDirection& OutNextOutputPort) const;
+	bool TryGetNextInputPortAroundOutput(const EGridDirection OutputPort, const EGridDirection CurrentInputPort, const bool bRotateClockwise, EGridDirection& OutNextInputPort) const;
+
+	bool bBeltInputSnappedToNeighbour = false;
+	bool bBeltHasSnappedConnection = false;
+	EGridDirection SnappedBeltConnectedPort = EGridDirection::East;
+	EAtomicBeltConnectionRole SnappedBeltConnectionRole = EAtomicBeltConnectionRole::None;
+
+
+	// Draw Debugs
+	void DrawDebugPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& PreviewResult) const;
 	void DrawDebugBuildingPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& PreviewResult) const;
 	void DrawDebugBeltPreview(const FAtomicPlacementTarget& Target, FAtomicPlacementPreviewResult& PreviewResult) const;
+
 	
 	UPROPERTY(Transient)
 	FAtomicPlacementSelection CurrentSelection;
-	
+
 	UPROPERTY(Transient)
 	TObjectPtr<AAtomicPlacementGhostActor> GhostActor;
 

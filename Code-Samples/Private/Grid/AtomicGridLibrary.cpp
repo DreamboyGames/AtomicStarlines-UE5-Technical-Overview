@@ -249,16 +249,21 @@ float UAtomicGridLibrary::GridDirectionToYawDegrees(EGridDirection GridDirection
 	}
 }
 
+bool UAtomicGridLibrary::TryGetNeighbourIndex(const int32 GridIndex, const EGridDirection GridDirection, const FIntVector GridSize, int32& OutGridIndex)
+{
+	OutGridIndex = INDEX_NONE;
+	
+	if (GridIndex == INDEX_NONE) return false;
+	
+	const FIntVector Coord = IndexToGridUnchecked(GridIndex, GridSize);
+	const FIntVector NeighbourCoord = GetNeighbourCoord(Coord, GridDirection);
+	
+	return TryGridToIndex(NeighbourCoord, GridSize, OutGridIndex);
+}
+
 FIntVector UAtomicGridLibrary::GetNeighbourCoord(const FIntVector GridCoord, const EGridDirection GridDirection)
 {
 	return GridCoord + GridDirectionToOffset(GridDirection);
-}
-
-int32 UAtomicGridLibrary::GetNeighbourIndex(const int32 GridIndex, const EGridDirection GridDirection, const FIntVector GridSize)
-{
-	const FIntVector Coord = IndexToGridUnchecked(GridIndex, GridSize);
-	const FIntVector NeighbourCoord = GetNeighbourCoord(Coord, GridDirection);
-	return GridToIndexUnchecked(NeighbourCoord, GridSize);
 }
 
 EGridDirection UAtomicGridLibrary::RotateGridDirectionByBuildingRotation(const EGridDirection GridDirection, const EBuildingRotation BuildingRotation)
@@ -445,6 +450,27 @@ EGridDirection UAtomicGridLibrary::BuildingRotationToGridDirection(const EBuildi
 	}
 }
 
+EBuildingRotation UAtomicGridLibrary::GridDirectionToBuildingRotation(const EGridDirection GridDirection)
+{
+	switch (GridDirection)
+	{
+	case EGridDirection::North:
+		return EBuildingRotation::North;
+
+	case EGridDirection::East:
+		return EBuildingRotation::East;
+
+	case EGridDirection::South:
+		return EBuildingRotation::South;
+
+	case EGridDirection::West:
+		return EBuildingRotation::West;
+
+	default:
+		return EBuildingRotation::East;
+	}
+}
+
 EBuildingRotation UAtomicGridLibrary::RotateBuildingClockwise(const EBuildingRotation BuildingRotation)
 {
 	const uint8 Value = static_cast<uint8>(BuildingRotation);
@@ -529,58 +555,119 @@ void UAtomicGridLibrary::GetResolvedBuildingPorts(const FGuid BuildingInstanceID
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Belt Route Ports
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Unreal grid:
-// East  = +X
-// West  = -X
-// South = +Y
-// North = -Y
-// Up    = +Z
-// Blender Export: (Forward: -Z, Up: Y)
 
-// Default RoutePort Directions:
-// Straight: (W<->E), (-X <-> +X),  Flow: (Input = West --> Output = East)
-// Corner: (W<->N) (-X <-> -Y),  Flow: (Input = West --> Output = North)
-TArray<EGridDirection> UAtomicGridLibrary::GetBeltBaseRoutePorts(const EAtomicBeltShape BeltShape)
+// Usually WEST for all 3 Route Types in default East rotation
+EGridDirection UAtomicGridLibrary::GetDefaultInputPort(const EAtomicBeltRouteType RouteType)
 {
-	TArray<EGridDirection> Ports;
-	Ports.Reserve(2);
-
-	switch (BeltShape)
+	// Default Convention: Input is West for all simple belt route types.
+	constexpr EGridDirection DefaultInputPort = EGridDirection::West;
+	
+	switch (RouteType)
 	{
-	case EAtomicBeltShape::Straight:
-		// Authored Default: ( -X <-> +X ) Straight belt runs horizontally in local/default East rotation.
-		Ports.Add(EGridDirection::West);
-		Ports.Add(EGridDirection::East);
-		break;
+	case EAtomicBeltRouteType::Straight:	return DefaultInputPort;
+	case EAtomicBeltRouteType::TurnLeft:	return DefaultInputPort;
+	case EAtomicBeltRouteType::TurnRight:	return DefaultInputPort;
+	default:								return DefaultInputPort;
+	}
+}
+
+EGridDirection UAtomicGridLibrary::GetDefaultOutputPort(const EAtomicBeltRouteType RouteType)
+{
+	switch (RouteType)
+	{
+	case EAtomicBeltRouteType::Straight:	return EGridDirection::East;	// W->E
+	case EAtomicBeltRouteType::TurnLeft:	return EGridDirection::North;	// W->N
+	case EAtomicBeltRouteType::TurnRight:	return EGridDirection::South;	// W->S
+	default:								return EGridDirection::East;
+	}
+}
+
+EGridDirection UAtomicGridLibrary::GetOutputPortForInput(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort)
+{
+	const EGridDirection DefaultInputPort = GetDefaultInputPort(RouteType);
+	const EGridDirection DefaultOutputPort = GetDefaultOutputPort(RouteType);
+	
+	const int32 InputDelta = GridDirectionToCardinalIndex(InputPort) - GridDirectionToCardinalIndex(DefaultInputPort);
+	return CardinalIndexToGridDirection(GridDirectionToCardinalIndex(DefaultOutputPort) + InputDelta);
+}
+
+void UAtomicGridLibrary::GetRoutePortsForInput(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, TArray<EGridDirection>& OutRoutePorts)
+{
+	OutRoutePorts.Reset();
+	OutRoutePorts.Reserve(2);
+	
+	const EGridDirection OutputPort = GetOutputPortForInput(RouteType, InputPort);
+	
+	OutRoutePorts.Add(InputPort);
+	OutRoutePorts.Add(OutputPort);
+}
+
+bool UAtomicGridLibrary::TryGetRouteTypeForInputAndOutput(const EGridDirection InputPort, const EGridDirection OutputPort, EAtomicBeltRouteType& OutRouteType)
+{
+	if (InputPort == OutputPort) return false;
+	
+	constexpr EGridDirection DefaultInputPort = EGridDirection::West;
+	
+	const int32 InputDelta = GridDirectionToCardinalIndex(InputPort) - GridDirectionToCardinalIndex(DefaultInputPort);	
+	const EGridDirection LocalOutput = CardinalIndexToGridDirection(GridDirectionToCardinalIndex(OutputPort) - InputDelta);
+
+	switch (LocalOutput)
+	{
+	case EGridDirection::East:
+		OutRouteType = EAtomicBeltRouteType::Straight;
+		return true;
 		
-	case EAtomicBeltShape::Corner:
-		// Authored Default: ( -X <-> -Y ) Corner belt connects West <-> North in local default East rotation.
-		Ports.Add(EGridDirection::West);
-		Ports.Add(EGridDirection::North);
-		break;
+	case EGridDirection::North:
+		OutRouteType = EAtomicBeltRouteType::TurnLeft;
+		return true;
+		
+	case EGridDirection::South:
+		OutRouteType = EAtomicBeltRouteType::TurnRight;
+		return true;
 		
 	default:
-		break;
+		return false;
 	}
-	
-	return Ports;
 }
 
-// RoutePort Directions based on Belt Rotation:
-// Straight: (W<->E), (-X <-> +X),  Flow: (Input = West --> Output = East),  + BeltRotation
-// Corner: (W<->N) (-X <-> -Y),  Flow: (Input = West --> Output = North),  + BeltRotation
-TArray<EGridDirection> UAtomicGridLibrary::GetBeltRotatedRoutePorts(const EAtomicBeltShape BeltShape, const EBuildingRotation BeltRotation)
+bool UAtomicGridLibrary::TryGetInputPortForRouteTypeAndOutput(const EAtomicBeltRouteType RouteType, const EGridDirection OutputPort, EGridDirection& OutInputPort)
 {
-	const TArray<EGridDirection> BasePorts = GetBeltBaseRoutePorts(BeltShape);
-	
-	TArray<EGridDirection> RotatedPorts;
-	RotatedPorts.Reserve(BasePorts.Num());
-	
-	for (const EGridDirection BasePort : BasePorts)
+	for (const EGridDirection TestInputPort : AllDirections)
 	{
-		RotatedPorts.Add(RotateGridDirectionByBuildingRotation(BasePort, BeltRotation));
+		if (TestInputPort == OutputPort) continue;
+		
+		const EGridDirection TestOutputPort = GetOutputPortForInput(RouteType, TestInputPort);
+		if (TestOutputPort == OutputPort)
+		{
+			OutInputPort = TestInputPort;
+			return true;
+		}
 	}
 	
-	return RotatedPorts;
+	return false;
 }
 
+
+void UAtomicGridLibrary::GetRoutePortsForBuildingRotation(const EAtomicBeltRouteType RouteType, const EBuildingRotation BuildingRotation, TArray<EGridDirection>& OutRoutePorts)
+{
+	const EGridDirection InputPort = GetInputPortForBuildingRotation(BuildingRotation);
+	GetRoutePortsForInput(RouteType, InputPort, OutRoutePorts);
+}
+
+EGridDirection UAtomicGridLibrary::GetInputPortForBuildingRotation(const EBuildingRotation BuildingRotation)
+{
+	const EGridDirection FacingDirection = BuildingRotationToGridDirection(BuildingRotation);
+	return OppositeGridDirection(FacingDirection);
+}
+
+EGridDirection UAtomicGridLibrary::GetOutputPortForBuildingRotation(const EAtomicBeltRouteType RouteType, const EBuildingRotation BuildingRotation)
+{
+	const EGridDirection InputPort = GetInputPortForBuildingRotation(BuildingRotation);
+	return GetOutputPortForInput(RouteType, InputPort);
+}
+
+EBuildingRotation UAtomicGridLibrary::GetBuildingRotationForInputPort(const EGridDirection InputPort)
+{
+	const EGridDirection FacingDirection = OppositeGridDirection(InputPort);
+	return GridDirectionToBuildingRotation(FacingDirection);
+}

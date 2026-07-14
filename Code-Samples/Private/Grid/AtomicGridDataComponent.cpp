@@ -42,6 +42,7 @@ void UAtomicGridDataComponent::InitializeGrid()
 	}
 	
 	BuildingRecords.OwningObject = this;
+	BeltRecords.OwningObject = this;
 	bGridInitialized = true;
 }
 
@@ -289,12 +290,12 @@ bool UAtomicGridDataComponent::RemoveBeltRecord(const FGuid& InstanceID)
 	if (Index == INDEX_NONE) return false;
 	
 	const FAtomicBeltRecord RemovedRecord = BeltRecords.Items[Index];
-	HandleBeltRecordRemoved(RemovedRecord);
-	
+
 	BeltRecords.Items.RemoveAt(Index);
 	BeltRecords.MarkArrayDirty();
-	
-	ShipGrid->ForceNetUpdate();
+
+	HandleBeltRecordRemoved(RemovedRecord);
+	if (ShipGrid) ShipGrid->ForceNetUpdate();
 	
 	return true;
 }
@@ -320,15 +321,11 @@ void UAtomicGridDataComponent::HandleBeltRecordAdded(const FAtomicBeltRecord& Re
 // Replication Callback
 void UAtomicGridDataComponent::HandleBeltRecordChanged(const FAtomicBeltRecord& Record)
 {
-	// RemoveBeltRecordFromOccupancyCache(Record);
-	// ApplyBeltRecordToOccupancyCache(Record);
-	//
-	// if (ShipGrid && VisualComponent)
-	// {
-	// 	VisualComponent->SpawnOrUpdateBeltFromRecord(Record);
-	// }
+	// Safe first version, Changed belt may affect old cell, and neighbours.
+	RebuildFullOccupancyCache();
 	
-	ApplyBeltRecordToOccupancyCache(Record);
+	// @todo: make more efficient by not rebuilding full cache
+	//ApplyBeltRecordToOccupancyCache(Record);
 	
 	if (ShipGrid && VisualComponent)
 	{
@@ -346,73 +343,20 @@ void UAtomicGridDataComponent::HandleBeltRecordRemoved(const FAtomicBeltRecord& 
 	// 	VisualComponent->DestroyLocalBelt(Record.InstanceID);
 	// }
 	
-	ApplyBeltRecordToOccupancyCache(Record);
-	
+	// Record should already be gone from BeltRecords.Items on server remove.
+	// On replicated remove, full rebuild is still the sagest simple path.
+	// @todo: make more efficient by not rebuilding full cache
+	RebuildFullOccupancyCache();
+
 	if (ShipGrid && VisualComponent)
 	{
 		VisualComponent->NotifyVisualsToRebuildBelts();
 	}
 }
 
-
-// Does belt at this index have a valid (reciprocal) connection to neighbour belt in port direction?
-// (e.g, if this index A has route port East, is there a belt at index B on the East side & does it have a route port West?)
-bool UAtomicGridDataComponent::HasReciprocalBeltConnectionAtPort(const int32 Index, const EGridDirection PortDirection) const
-{
-	const int32 NeighbourIndex = UAtomicGridLibrary::GetNeighbourIndex(Index, PortDirection, GridSize);
-	const FAtomicBeltRecord* NeighbourBelt = FindBeltRecordAtIndex(NeighbourIndex);
-	if (!NeighbourBelt) return false;
-	
-	const TArray<EGridDirection> NeighbourRoutePorts  = UAtomicGridLibrary::GetBeltRotatedRoutePorts(NeighbourBelt->Shape, NeighbourBelt->Rotation);
-	return NeighbourRoutePorts.Contains(UAtomicGridLibrary::OppositeGridDirection(PortDirection));
-}
-
-// Check All Directions for valid (reciprocal) belt connections
-// Does Not care about flow direction
-bool UAtomicGridDataComponent::HasAnyNeighbourBeltConnection(const int32 Index) const
-{
-	int32 NeighbourCount = 0;
-	for (const EGridDirection Direction : AllDirections)
-	{
-		if (HasReciprocalBeltConnectionAtPort(Index, Direction))
-		{
-			++NeighbourCount;
-		}
-	}
-	return NeighbourCount != 0;
-}
-
-// Get any valid (reciprocal) belt connections for this belt's RoutePorts
-void UAtomicGridDataComponent::GetConnectedRoutePortsForBeltRecord(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutConnectedPorts) const
-{
-	OutConnectedPorts.Reset();
-	
-	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(BeltRecord.Shape, BeltRecord.Rotation);
-	
-	for (const EGridDirection RoutePort : RoutePorts)
-	{
-		if (HasReciprocalBeltConnectionAtPort(BeltRecord.CellIndex, RoutePort))
-		{
-			OutConnectedPorts.Add(RoutePort);
-		}
-	}
-}
-
-// Get any valid (reciprocal) belt connections for this belt candidate's RoutePorts
-void UAtomicGridDataComponent::GetConnectedRoutePortsForBeltCandidate(const int32 CellIndex, const EAtomicBeltShape Shape, const EBuildingRotation Rotation, TArray<EGridDirection>& OutConnectedPorts) const
-{
-	OutConnectedPorts.Reset();
-	
-	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(Shape, Rotation);
-	
-	for (const EGridDirection RoutePort : RoutePorts)
-	{
-		if (HasReciprocalBeltConnectionAtPort(CellIndex, RoutePort))
-		{
-			OutConnectedPorts.Add(RoutePort);
-		}
-	}
-}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Belt Helpers
+/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Get modifiable belt record at index
 FAtomicBeltRecord* UAtomicGridDataComponent::FindBeltRecordAtIndex(const int32 Index)
@@ -438,13 +382,80 @@ const FAtomicBeltRecord* UAtomicGridDataComponent::FindBeltRecordAtIndex(const i
 		}	
 	}
 	return nullptr;
-	constexpr 
 }
 
 const FAtomicBeltRecord* UAtomicGridDataComponent::GetNeighbourBeltRecord(const int32 Index, const EGridDirection Direction) const
 {
-	const int32 NeighbourIndex = UAtomicGridLibrary::GetNeighbourIndex(Index, Direction, GridSize);
+	int32 NeighbourIndex = INDEX_NONE;
+	if (!UAtomicGridLibrary::TryGetNeighbourIndex(Index, Direction, GridSize, NeighbourIndex)) return nullptr;
 	return FindBeltRecordAtIndex(NeighbourIndex);
+}
+
+void UAtomicGridDataComponent::GetRoutePortsForBeltRecord(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutRoutePorts) const
+{
+	UAtomicGridLibrary::GetRoutePortsForInput(BeltRecord.RouteType, BeltRecord.InputPort, OutRoutePorts);
+}
+
+void UAtomicGridDataComponent::GetConnectedRoutePortsForBeltRecord(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutConnectedRoutePorts) const
+{
+	GetConnectedRoutePortsForBeltCandidate(BeltRecord.CellIndex, BeltRecord.RouteType, BeltRecord.InputPort, BeltRecord.OutputPort, OutConnectedRoutePorts);
+}
+
+// Get any valid (reciprocal) belt connections for this belt candidate's RoutePorts
+void UAtomicGridDataComponent::GetConnectedRoutePortsForBeltCandidate(const int32 CellIndex, const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, const EGridDirection OutputPort, TArray<EGridDirection>& OutConnectedRoutePorts) const
+{
+	OutConnectedRoutePorts.Reset();
+	
+	if (!Cells.IsValidIndex(CellIndex)) return;
+	
+	const EGridDirection ExpectedOutputPort = UAtomicGridLibrary::GetOutputPortForInput(RouteType, InputPort);
+	if (ExpectedOutputPort != OutputPort) return;
+	
+	TArray<EGridDirection> RoutePorts;
+	UAtomicGridLibrary::GetRoutePortsForInput(RouteType, InputPort, RoutePorts);
+	
+	for (const EGridDirection RoutePort : RoutePorts)
+	{
+		if (HasReciprocalBeltConnectionAtPort(CellIndex, RoutePort))
+		{
+			OutConnectedRoutePorts.Add(RoutePort);
+		}
+	}
+}
+
+bool UAtomicGridDataComponent::DoesBeltRecordHavePort(const FAtomicBeltRecord& BeltRecord, EGridDirection Port) const
+{
+	TArray<EGridDirection> RoutePorts;
+	GetRoutePortsForBeltRecord(BeltRecord, RoutePorts);
+	return RoutePorts.Contains(Port);
+}
+
+// Does belt at this index have a valid (reciprocal) connection to neighbour belt in port direction?
+// (e.g, if this index A has route port East, is there a belt at index B on the East side & does it have a route port West?)
+bool UAtomicGridDataComponent::HasReciprocalBeltConnectionAtPort(const int32 Index, const EGridDirection PortDirection) const
+{
+	if (!Cells.IsValidIndex(Index)) return false;
+	
+	const FAtomicBeltRecord* NeighbourBelt = GetNeighbourBeltRecord(Index, PortDirection);
+	if (!NeighbourBelt) return false;
+	
+	const EGridDirection NeighbourPortBackToThisBelt = UAtomicGridLibrary::OppositeGridDirection(PortDirection);
+	return DoesBeltRecordHavePort(*NeighbourBelt, NeighbourPortBackToThisBelt);
+}
+
+// Check All Directions for valid (reciprocal) belt connections
+// Does Not care about flow direction
+bool UAtomicGridDataComponent::HasAnyNeighbourBeltConnection(const int32 Index) const
+{
+	int32 NeighbourCount = 0;
+	for (const EGridDirection Direction : AllDirections)
+	{
+		if (HasReciprocalBeltConnectionAtPort(Index, Direction))
+		{
+			++NeighbourCount;
+		}
+	}
+	return NeighbourCount != 0;
 }
 
 
@@ -454,5 +465,7 @@ const FAtomicBeltRecord* UAtomicGridDataComponent::GetNeighbourBeltRecord(const 
 void UAtomicGridDataComponent::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	
 	DOREPLIFETIME(UAtomicGridDataComponent, BuildingRecords);
+	DOREPLIFETIME(UAtomicGridDataComponent, BeltRecords);
 }

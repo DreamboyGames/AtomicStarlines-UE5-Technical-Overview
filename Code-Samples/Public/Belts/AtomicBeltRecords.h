@@ -6,7 +6,7 @@
 #include "Net/Serialization/FastArraySerializer.h"
 #include "AtomicBeltRecords.generated.h"
 
-enum class EAtomicBeltShape : uint8;
+enum class EAtomicBeltRouteType : uint8;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 // BELT RECORDS -- FAST ARRAY
@@ -17,12 +17,22 @@ enum class EAtomicBeltShape : uint8;
 USTRUCT(BlueprintType)
 struct FAtomicBeltRecord : public FFastArraySerializerItem {
 	GENERATED_BODY()
+	// Straight: Default Orientation { Input West, Output East }
+	// CornerUp: Default Orientation { Input West, Output North }
+	// CornerDown: Default Orientation { Input West, Output South }
 	
+	// InputPort = side items enter from / connected neighbour side
+	// OutputPort = side items leave from
+	// RouteType = shape/path from input to output
+	
+	
+	// Unique belt instance ID
 	UPROPERTY()
 	FGuid InstanceID;
 	
+	// ID to lookup Belt Definition in UAtomicBuildingRegistrySubsystem
 	UPROPERTY()
-	FName BeltID;
+	FName DefinitionID;
 	
 	UPROPERTY()
 	int32 CellIndex = INDEX_NONE;
@@ -33,16 +43,15 @@ struct FAtomicBeltRecord : public FFastArraySerializerItem {
 	UPROPERTY()
 	uint8 DeckIndex = 0;
 	
+	// RouteType = Shape/Path from Input to Output
 	UPROPERTY()
-	EAtomicBeltShape Shape;
+	EAtomicBeltRouteType RouteType;
 	
-	// Defines possible connection sides only. E.g. (E,W) or (E,S)
 	UPROPERTY()
-	EBuildingRotation Rotation = EBuildingRotation::East;
+	EGridDirection OutputPort = EGridDirection::East;
 	
-	// Flow Direction, item Output port
 	UPROPERTY()
-	EGridDirection OutputFlowDirection = EGridDirection::East;
+	EGridDirection InputPort = EGridDirection::West;
 };
 
 USTRUCT(BlueprintType)

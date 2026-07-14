@@ -6,114 +6,186 @@
 #include "Grid/AtomicGridTypes.h"
 
 
-// Get Resolved Belt Visual (mesh variant and rotation) based on Connected RoutePorts
-bool FAtomicBeltVisualResolver::ResolveBeltVisualFromConnectedRoutePorts(const EAtomicBeltShape BeltShape, const EBuildingRotation BeltRotation, const TArray<EGridDirection>& RoutePorts, const TArray<EGridDirection>& ConnectedPorts, FAtomicResolvedBeltVisual& OutResolvedVisual)
+namespace {
+	bool HasExactlyTwoPorts(const TArray<EGridDirection>& Ports, const EGridDirection A, const EGridDirection B)
+	{
+		return Ports.Num() == 2 && Ports.Contains(A) && Ports.Contains(B);
+	}
+	
+	EBuildingRotation GetVisualRotationForOpenPort(const EGridDirection OpenPort)
+	{
+		switch (OpenPort)
+		{
+		case EGridDirection::North: return EBuildingRotation::North;
+		case EGridDirection::East:	return EBuildingRotation::East;
+		case EGridDirection::South: return EBuildingRotation::South;
+		case EGridDirection::West:	return EBuildingRotation::West;
+		default:					return EBuildingRotation::East;
+		}
+	}
+	
+	EBuildingRotation ResolveCanonicalStraightVisualRotation(const TArray<EGridDirection>& RoutePorts)
+	{
+		// Straight only has 2 visual orientations.
+		// Pick a stable canoncial rotation based on the route axis.
+		if (HasExactlyTwoPorts(RoutePorts, EGridDirection::West, EGridDirection::East))
+		{
+			return EBuildingRotation::East;
+		}
+		if (HasExactlyTwoPorts(RoutePorts, EGridDirection::North, EGridDirection::South))
+		{
+			return EBuildingRotation::North;
+		}
+		
+		return EBuildingRotation::East;
+	}
+	
+	EBuildingRotation ResolveCanonicalCornerVisualRotation(const TArray<EGridDirection>& RoutePorts)
+	{
+		// Default corner mesh route = { West, North } at East rotation.
+		// Rotate that canonical corner around the 4 directions.
+		if (HasExactlyTwoPorts(RoutePorts, EGridDirection::West, EGridDirection::North))
+		{
+			return EBuildingRotation::East;
+		}
+		if (HasExactlyTwoPorts(RoutePorts, EGridDirection::North, EGridDirection::East))
+		{
+			return EBuildingRotation::South;
+		}
+		if (HasExactlyTwoPorts(RoutePorts, EGridDirection::East, EGridDirection::South))
+		{
+			return EBuildingRotation::West;
+		}
+		if (HasExactlyTwoPorts(RoutePorts, EGridDirection::South, EGridDirection::West))
+		{
+			return EBuildingRotation::North;
+		}
+		
+		return EBuildingRotation::East;
+	}
+}
+
+
+bool FAtomicBeltVisualResolver::ResolveBeltVisual(const EAtomicBeltRouteType RouteType, EGridDirection InputPort, EGridDirection OutputPort, const TArray<EGridDirection>& ConnectedRoutePorts, FAtomicResolvedBeltVisual& OutResolvedVisual)
 {
 	OutResolvedVisual = FAtomicResolvedBeltVisual();
+	OutResolvedVisual.bIsValid = false;
 	
-	const int32 ConnectedPortCount = ConnectedPorts.Num();
-
-	switch (BeltShape)
+	// 1. Validate route truth.
+	const EGridDirection ExpectedOutputPort = UAtomicGridLibrary::GetOutputPortForInput(RouteType, InputPort);
+	if (ExpectedOutputPort != OutputPort)
 	{
-	case EAtomicBeltShape::Straight:
-		{
-			if (ConnectedPortCount >= 2)
-			{
-				OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::Straight;
-				OutResolvedVisual.VisualRotation = BeltRotation;
-				return true;
-			}
-			if (ConnectedPortCount == 1)
-			{
-				OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::StraightEnd;
-				OutResolvedVisual.VisualRotation = BeltRotation;
-				return true;
-			}
-			
-			OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::StraightDoubleEnd;
-			OutResolvedVisual.VisualRotation = BeltRotation;
-			return true;
-		}
-		
-	case EAtomicBeltShape::Corner:
-		{
-			if (ConnectedPortCount >= 2)
-			{
-				OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::Corner;
-				OutResolvedVisual.VisualRotation = BeltRotation;
-				return true;
-			}
-			if (ConnectedPortCount == 1)
-			{
-				if (!ChooseCornerEndAorB(RoutePorts, ConnectedPorts[0], OutResolvedVisual.VisualVariant)) return false;
-				OutResolvedVisual.VisualRotation = BeltRotation;
-				return true;
-			}
-		
-			OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::CornerDoubleEnd;
-			OutResolvedVisual.VisualRotation = BeltRotation;
-			return true;
-		}
-		
-	default:
 		return false;
 	}
-}
+	
+	TArray<EGridDirection> RoutePorts;
+	UAtomicGridLibrary::GetRoutePortsForInput(RouteType, InputPort, RoutePorts);
+	
+	if (!RoutePorts.Contains(InputPort) || !RoutePorts.Contains(OutputPort)) return false;
+	
+	// 2. Keep only valid connected ports that belong to this route.
+	TArray<EGridDirection> ValidConnectedPorts;
+	ValidConnectedPorts.Reserve(2);
 
-bool FAtomicBeltVisualResolver::ChooseCornerEndAorB(const TArray<EGridDirection>& RoutePorts, const EGridDirection ConnectedPort, EAtomicBeltVisualVariant& OutVariant)
-{
-	if (RoutePorts.Num() != 2) return false;
-	
-	if (ConnectedPort == RoutePorts[0])
+	for (const EGridDirection ConnectedPort : ConnectedRoutePorts)
 	{
-		OutVariant = EAtomicBeltVisualVariant::CornerEndA;
-		return true;
-	}
-	
-	if (ConnectedPort == RoutePorts[1])
-	{
-		OutVariant = EAtomicBeltVisualVariant::CornerEndB;
-		return true;
-	}
-	
-	// CornerEndA:
-	// open side = RoutePorts[0]
-	// capped side = RoutePorts[1]
-	//
-	// CornerEndB:
-	// open side = RoutePorts[1]
-	// capped side = RoutePorts[0]
-	
-	return false;
-}
-
-EBuildingRotation FAtomicBeltVisualResolver::GridDirectionToEquivalentBuildingRotation(const EGridDirection GridDirection)
-{
-	switch (GridDirection)
-	{
-	case EGridDirection::North:		return EBuildingRotation::North;
-	case EGridDirection::East:		return EBuildingRotation::East;
-	case EGridDirection::South:		return EBuildingRotation::South;
-	case EGridDirection::West:		return EBuildingRotation::West;
-	default:						return EBuildingRotation::East;
-	}
-}
-
-bool FAtomicBeltTopologyRules::TryGetInputGridDirection(const EAtomicBeltShape BeltShape, const EBuildingRotation BeltRotation, const EGridDirection OutputGridDirection, EGridDirection& OutInputGridDirection)
-{
-	// This is fine for 2-port belts, straight and corner
-	// @todo: splitters/mergers should not use this exact helper because they have multiple inputs/outputs
-	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(BeltShape, BeltRotation);
-	if (!RoutePorts.Contains(OutputGridDirection)) return false;
-	
-	for (const EGridDirection RoutePort : RoutePorts)
-	{
-		if (RoutePort != OutputGridDirection)
+		if (RoutePorts.Contains(ConnectedPort))
 		{
-			OutInputGridDirection = RoutePort;
-			return true;
+			ValidConnectedPorts.AddUnique(ConnectedPort);
 		}
 	}
+
+	const int32 ConnectedCount = ValidConnectedPorts.Num();
+	if (ConnectedCount > 2) return false;
 	
-	return false;
+	const bool bHasSingleConnectedPort = ConnectedCount == 1;
+	const EGridDirection SingleConnectedPort = bHasSingleConnectedPort ? ValidConnectedPorts[0] : EGridDirection::West;
+
+	// 3. Choose visual variant from RouteType + connected count.
+	switch (RouteType)
+	{
+		case EAtomicBeltRouteType::Straight:
+		{
+			if (ConnectedCount == 0)
+			{
+				OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::StraightEndDouble;
+			}
+			else if (ConnectedCount == 1)
+			{
+				OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::StraightEnd;
+			}
+			else
+			{
+				OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::Straight;
+			}
+			break;
+		}
+		case EAtomicBeltRouteType::TurnLeft:
+		{
+			if (ConnectedCount == 0)
+			{
+				OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::TurnLeftEndDouble;
+			}
+			else if (ConnectedCount == 1)
+			{
+				OutResolvedVisual.VisualVariant = SingleConnectedPort == InputPort 
+					? EAtomicBeltVisualVariant::TurnLeftEndInputConnected 
+					: EAtomicBeltVisualVariant::TurnLeftEndOutputConnected;
+			}
+			else
+			{
+				OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::TurnLeft;
+			}
+			break;
+		}
+		case EAtomicBeltRouteType::TurnRight:
+		{
+			if (ConnectedCount == 0)
+			{
+				OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::TurnRightEndDouble;
+			}
+			else if (ConnectedCount == 1)
+			{
+				OutResolvedVisual.VisualVariant = SingleConnectedPort == InputPort 
+					? EAtomicBeltVisualVariant::TurnRightEndInputConnected 
+					: EAtomicBeltVisualVariant::TurnRightEndOutputConnected;
+			}
+			else
+			{
+				OutResolvedVisual.VisualVariant = EAtomicBeltVisualVariant::TurnRight;
+			}
+			break;
+		}
+		default: 
+			return false;
+	}
+	
+	// 4. Choose visual rotation
+	//		- Full / Double-end: use normal route facing from InputPort
+	//		- Single-end: rotate mesh toward the capped side.
+	EGridDirection VisualFacingPort = OutputPort;
+	if (ConnectedCount == 1)
+	{
+		for (const EGridDirection RoutePort : RoutePorts)
+		{
+			if (RoutePort != SingleConnectedPort)
+			{
+				VisualFacingPort = RoutePort;
+				break;
+			}
+		}
+		
+		OutResolvedVisual.VisualRotation = UAtomicGridLibrary::GridDirectionToBuildingRotation(VisualFacingPort);
+	}
+	else
+	{
+		OutResolvedVisual.VisualRotation = UAtomicGridLibrary::GetBuildingRotationForInputPort(InputPort);
+	}
+	
+	// 5. Fill result.
+	OutResolvedVisual.RoutePorts = RoutePorts;
+	OutResolvedVisual.ConnectedRoutePorts = ValidConnectedPorts;
+
+	OutResolvedVisual.bIsValid = true;
+	return true;
 }

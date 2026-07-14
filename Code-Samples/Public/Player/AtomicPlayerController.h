@@ -8,7 +8,7 @@
 #include "InputCoreTypes.h"
 #include "AtomicPlayerController.generated.h"
 
-enum class EAtomicBeltShape : uint8;
+enum class EAtomicBeltRouteType : uint8;
 enum class EGridDirection : uint8;
 enum class EBuildingRotation : uint8;
 enum class EPlacementMode : uint8;
@@ -69,7 +69,7 @@ public:
 	void Server_RequestPlaceBuilding(const FName BuildingID, const FIntVector AnchorCoord, const EBuildingRotation Rotation, const AAtomicShipGrid* TargetGrid);
 	
 	UFUNCTION(Server, Reliable)
-	void Server_RequestPlaceBelt(const FName BuildingID, const FIntVector AnchorCoord, const EAtomicBeltShape BeltShape, const EBuildingRotation Rotation, const EGridDirection OutputGridDirection, const AAtomicShipGrid* TargetGrid);
+	void Server_RequestPlaceBelt(const FName BuildingID, const FIntVector AnchorCoord, const EAtomicBeltRouteType BeltShape, const EGridDirection InputPort, const EGridDirection OutputPort, const AAtomicShipGrid* TargetGrid);
 	
 	//// CLIENT FUNCTIONS ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	UFUNCTION(Client, Reliable)

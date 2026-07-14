@@ -3,7 +3,9 @@
 
 #include "Grid/AtomicGridPlacementComponent.h"
 
+#include "AtomicStarlines.h"
 #include "Building/AtomicBuildingActor.h"
+#include "Logging/StructuredLog.h"
 #include "Building/AtomicBuildingDefinition.h"
 #include "Building/AtomicBuildingRegistrySubsystem.h"
 #include "Core/AtomicPlayerState.h"
@@ -70,20 +72,26 @@ bool UAtomicGridPlacementComponent::CanPlaceBuilding(const UAtomicBuildingDefini
 	return true;
 }
 
-bool UAtomicGridPlacementComponent::CanPlaceBelt(const UAtomicBeltDefinition* BeltDefinition, const FIntVector GridCoord, const EAtomicBeltShape BeltShape, const EBuildingRotation CurrentRotation, const EGridDirection OutputGridDirection) const
+bool UAtomicGridPlacementComponent::CanPlaceBelt(const UAtomicBeltDefinition* BeltDefinition, const FIntVector GridCoord, const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, const EGridDirection OutputPort) const
 {
 	if (!GridData || !GetWorld()) return false;
 	if (!BeltDefinition) return false;
 	
+	// Cell is available?
 	if (!CheckIfValidCell(GridCoord)) return false;
 	
-	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(BeltShape, CurrentRotation);
-	if (!RoutePorts.Contains(OutputGridDirection)) return false;
+	if (InputPort == OutputPort) return false;
 	
-	//UE_LOG(LogTemp, Warning, TEXT("CanPlaceBelt TRUE"));
-	return true;
+	const EGridDirection ExpectedOutputPort = UAtomicGridLibrary::GetOutputPortForInput(RouteType, InputPort);
+	if (ExpectedOutputPort != OutputPort) return false;
+	
+	TArray<EGridDirection> RoutePorts;
+	UAtomicGridLibrary::GetRoutePortsForInput(RouteType, InputPort, RoutePorts);
+	
+	return RoutePorts.Contains(InputPort) && RoutePorts.Contains(OutputPort);
 }
 
+// Check if Cell is available for new placement?
 bool UAtomicGridPlacementComponent::CheckIfValidCell(const FIntVector CellCoord) const
 {
 	const FAtomicGridCell* Cell = GridData->GetCell(CellCoord);
@@ -211,52 +219,49 @@ bool UAtomicGridPlacementComponent::TryPlaceBuilding(const FName BuildingID, con
 }
 
 // ---------------------------------------------------------------------
-// Try Place BELT
+// Try Place BELT -- run on SERVER
 // Place Belt from this Selected Belt Definition at this anchor coord with this rotation.
 // ---------------------------------------------------------------------
-bool UAtomicGridPlacementComponent::TryPlaceBelt(const FName BeltID, const FIntVector AnchorCoord, const EAtomicBeltShape BeltShape, const EBuildingRotation Rotation, const EGridDirection OutputGridDirection, const APawn* RequestingPawn) const
+bool UAtomicGridPlacementComponent::TryPlaceBelt(const FName DefinitionID, const FIntVector AnchorCoord, const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, const EGridDirection OutputPort, const APawn* RequestingPawn) const
 {
 	if (!ShipGrid || !GridData) return false;
 	if (!ShipGrid->HasAuthority()) return false;
 	if (!RequestingPawn) return false;
-
-	const UAtomicBeltDefinition* BeltDefinition = BuildingRegistry->FindBeltDefinition(BeltID);
+	
+	const UAtomicBeltDefinition* BeltDefinition = BuildingRegistry->FindBeltDefinition(DefinitionID);
 	if (!BeltDefinition) return false;
-
-	// Can Place Building?
-	if (!CanPlaceBelt(BeltDefinition, AnchorCoord, BeltShape, Rotation, OutputGridDirection))
-	{
-		return false;
-	}
+	
+	// Can Place?
+	if (!CanPlaceBelt(BeltDefinition, AnchorCoord, RouteType, InputPort, OutputPort)) return false;
 	
 	int32 AnchorCellIndex = INDEX_NONE;
 	if (!UAtomicGridLibrary::TryGridToIndex(AnchorCoord, GridData->GetGridSize(), AnchorCellIndex)) return false;
-
+	
 	int32 OwningPlayerID = INDEX_NONE;
 	if (const AAtomicPlayerState* RequestingPlayerState = Cast<AAtomicPlayerState>(RequestingPawn->GetPlayerState()))
 	{
 		OwningPlayerID = RequestingPlayerState->GetPlayerId();
 	}
 	
-	const FGuid InstanceID = FGuid::NewGuid();
-	
 	// Add Placed Building Record
 	FAtomicBeltRecord NewRecord;
-	NewRecord.InstanceID = InstanceID;
-	NewRecord.BeltID = BeltID;
+	NewRecord.InstanceID = FGuid::NewGuid();
+	NewRecord.DefinitionID = DefinitionID;
 	NewRecord.CellIndex = AnchorCellIndex;
 	NewRecord.DeckIndex = static_cast<uint8>(AnchorCoord.Z);
 	NewRecord.OwningPlayerID = OwningPlayerID;
-	NewRecord.Rotation = Rotation;
-	NewRecord.OutputFlowDirection = OutputGridDirection;
-	NewRecord.Shape = BeltShape;
+	NewRecord.RouteType = RouteType;
+	NewRecord.InputPort = InputPort;
+	NewRecord.OutputPort = OutputPort;
 
 	if (!GridData->AddBeltRecord(NewRecord))
 	{
 		return false;	
 	}
-
-	UE_LOG(LogTemp, Warning, TEXT("TryPlaceBelt TRUE"));
+	
+	UE_LOG(LogGame, Warning, TEXT("TryPlaceBelt=TRUE | Cell Index: %d, InputPort: %s, OutputPort: %s"), NewRecord.CellIndex, 
+		*UEnum::GetValueAsString(NewRecord.InputPort), *UEnum::GetValueAsString(NewRecord.OutputPort));
+	
 	return true;
 }
 

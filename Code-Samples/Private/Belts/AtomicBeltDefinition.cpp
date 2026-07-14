@@ -15,29 +15,34 @@ UStaticMesh* UAtomicBeltDefinition::GetMeshForVariant(const EAtomicBeltVisualVar
 	case EAtomicBeltVisualVariant::StraightEnd:
 		return StraightEndMesh;
 		
-	case EAtomicBeltVisualVariant::StraightDoubleEnd:
+	case EAtomicBeltVisualVariant::StraightEndDouble:
 		return StraightDoubleEndMesh;
 		
-	case EAtomicBeltVisualVariant::Corner:
-		return CornerMesh;
+	case EAtomicBeltVisualVariant::TurnLeft:
+		return TurnLeftMesh;
 		
-	case EAtomicBeltVisualVariant::CornerEndA:
-		return CornerEndMeshA;
+	case EAtomicBeltVisualVariant::TurnLeftEndInputConnected:
+		return TurnLeftEndInputConnectedMesh;
 		
-	case EAtomicBeltVisualVariant::CornerEndB:
-		return CornerEndMeshB;
+	case EAtomicBeltVisualVariant::TurnLeftEndOutputConnected:
+		return TurnLeftEndOutputConnectedMesh;
 		
-	case EAtomicBeltVisualVariant::CornerDoubleEnd:
-		return CornerDoubleEndMesh;
+	case EAtomicBeltVisualVariant::TurnLeftEndDouble:
+		return TurnLeftEndDoubleMesh;
+		
+	case EAtomicBeltVisualVariant::TurnRight:
+		return TurnRightMesh;
+		
+	case EAtomicBeltVisualVariant::TurnRightEndInputConnected:
+		return TurnRightEndInputConnectedMesh;
+		
+	case EAtomicBeltVisualVariant::TurnRightEndOutputConnected:
+		return TurnRightEndOutputConnectedMesh;
+		
+	case EAtomicBeltVisualVariant::TurnRightEndDouble:
+		return TurnRightEndDoubleMesh;
 	
 	default:
 		return nullptr;
 	}	
 }
-// CornerEndA:
-// open side = RoutePorts[0]
-// capped side = RoutePorts[1]
-//
-// CornerEndB:
-// open side = RoutePorts[1]
-// capped side = RoutePorts[0]

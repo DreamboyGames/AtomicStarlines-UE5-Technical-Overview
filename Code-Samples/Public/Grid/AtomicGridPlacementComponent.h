@@ -8,7 +8,7 @@
 #include "AtomicGridPlacementComponent.generated.h"
 
 
-enum class EAtomicBeltShape : uint8;
+enum class EAtomicBeltRouteType : uint8;
 class UAtomicBeltDefinition;
 class UAtomicBuildingRegistrySubsystem;
 class UAtomicBuildingDefinition;
@@ -38,8 +38,8 @@ public:
 	// ---------------------------------------------------------------------
 	// Belts
 	// ---------------------------------------------------------------------
-	bool CanPlaceBelt(const UAtomicBeltDefinition* BeltDefinition, const FIntVector GridCoord, const EAtomicBeltShape BeltShape, const EBuildingRotation CurrentRotation, const EGridDirection OutputGridDirection) const;
-	bool TryPlaceBelt(const FName BeltID, const FIntVector AnchorCoord, const EAtomicBeltShape BeltShape, const EBuildingRotation Rotation, const EGridDirection OutputGridDirection, const APawn* RequestingPawn) const;
+	bool CanPlaceBelt(const UAtomicBeltDefinition* BeltDefinition, const FIntVector GridCoord, const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, const EGridDirection OutputPort) const;
+	bool TryPlaceBelt(const FName DefinitionID, const FIntVector AnchorCoord, const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, const EGridDirection OutputPort, const APawn* RequestingPawn) const;
 	bool TryRemoveBelt();
 
 	// ---------------------------------------------------------------------

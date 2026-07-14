@@ -180,10 +180,12 @@ void UAtomicGridVisualComponent::ClearBeltInstances()
 }
 
 // Record -> ResolveBeltVisual() -> GetMeshForVariant() -> AddInstance()
-
 void UAtomicGridVisualComponent::RebuildAllBeltVisuals()
 {
-	if (!GridData || !ShipGrid) return;
+	// For now this full rebuild correctly updates the new belt and existing neighbours, because every placed belt gets re-resolved after each add/change/remove
+	// @todo: make more efficient by only rebuilding locally affected belts.
+	
+	if (!GridData || !ShipGrid || !BuildingRegistry) return;
 	
 	ClearBeltInstances();
 	
@@ -191,7 +193,7 @@ void UAtomicGridVisualComponent::RebuildAllBeltVisuals()
 	
 	for (const FAtomicBeltRecord& Record : BeltRecords)
 	{
-		const UAtomicBeltDefinition* BeltDefinition = BuildingRegistry->FindBeltDefinition(Record.BeltID);
+		const UAtomicBeltDefinition* BeltDefinition = BuildingRegistry->FindBeltDefinition(Record.DefinitionID);
 		if (!BeltDefinition) continue;
 		
 		FAtomicResolvedBeltVisual ResolvedVisual;
@@ -208,11 +210,22 @@ void UAtomicGridVisualComponent::RebuildAllBeltVisuals()
 		
 		const FTransform WorldTransform = MakeBeltWorldTransform(Record, ResolvedVisual.VisualRotation);
 		InstanceComponent->AddInstance(WorldTransform, true);
+		
+		// TEMP LOG
+		UE_LOG(LogTemp, Warning, TEXT("Belt Visual | RouteType=%s Input=%s Output=%s Variant=%s VisualRot=%s CellIndex=%d"),
+			*UEnum::GetValueAsString(Record.RouteType),
+			*UEnum::GetValueAsString(Record.InputPort),
+			*UEnum::GetValueAsString(Record.OutputPort),
+			*UEnum::GetValueAsString(ResolvedVisual.VisualVariant),
+			*UEnum::GetValueAsString(ResolvedVisual.VisualRotation),
+			Record.CellIndex
+		);
 	}
 }
 
 FTransform UAtomicGridVisualComponent::MakeBeltWorldTransform(const FAtomicBeltRecord& BeltRecord, const EBuildingRotation VisualRotation) const
 {
+	if (!GridData || !ShipGrid) return FTransform::Identity;
 	const FIntVector Coord = UAtomicGridLibrary::IndexToGridUnchecked(BeltRecord.CellIndex, GridData->GetGridSize());
 	const FVector WorldLocation = UAtomicGridLibrary::GridToWorld(Coord, ShipGrid->GetTransform(), GridData->GetCellSize());
 	const float Yaw = UAtomicGridLibrary::BuildingRotationToYawDegrees(VisualRotation);
@@ -223,12 +236,10 @@ bool UAtomicGridVisualComponent::ResolveBeltVisualForRecord(const FAtomicBeltRec
 {
 	if (!GridData) return false;
 	
-	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(BeltRecord.Shape, BeltRecord.Rotation);
+	TArray<EGridDirection> ConnectedRoutePorts;
+	GridData->GetConnectedRoutePortsForBeltRecord(BeltRecord, ConnectedRoutePorts);
 	
-	TArray<EGridDirection> ConnectedPorts;
-	GridData->GetConnectedRoutePortsForBeltRecord(BeltRecord, ConnectedPorts);
-	
-	return FAtomicBeltVisualResolver::ResolveBeltVisualFromConnectedRoutePorts(BeltRecord.Shape, BeltRecord.Rotation, RoutePorts, ConnectedPorts, OutResolvedVisual);
+	return FAtomicBeltVisualResolver::ResolveBeltVisual(BeltRecord.RouteType, BeltRecord.InputPort, BeltRecord.OutputPort, ConnectedRoutePorts, OutResolvedVisual);
 }
 
 bool UAtomicGridVisualComponent::ResolveBeltVisualForPreviewRecord(const FAtomicBeltRecord& PreviewBeltRecord, FAtomicResolvedPreviewBelt& OutResolvedPreview) const
@@ -236,22 +247,32 @@ bool UAtomicGridVisualComponent::ResolveBeltVisualForPreviewRecord(const FAtomic
 	// The Preview record does not need to exist in the BeltRecords array;
 	if (!GridData) return false;
 	
-	const TArray<EGridDirection> RoutePorts = UAtomicGridLibrary::GetBeltRotatedRoutePorts(PreviewBeltRecord.Shape, PreviewBeltRecord.Rotation);
+	OutResolvedPreview = FAtomicResolvedPreviewBelt{};
 	
-	TArray<EGridDirection> ConnectedPorts;
-	GridData->GetConnectedRoutePortsForBeltRecord(PreviewBeltRecord, ConnectedPorts);
+	TArray<EGridDirection> RoutePorts;
+	UAtomicGridLibrary::GetRoutePortsForInput(PreviewBeltRecord.RouteType, PreviewBeltRecord.InputPort, RoutePorts);
+	
+	TArray<EGridDirection> ConnectedRoutePorts;
+	GridData->GetConnectedRoutePortsForBeltRecord(PreviewBeltRecord, ConnectedRoutePorts);
 	
 	FAtomicResolvedBeltVisual ResolvedVisual;
-	const bool bResolvedVisual = FAtomicBeltVisualResolver::ResolveBeltVisualFromConnectedRoutePorts(PreviewBeltRecord.Shape, PreviewBeltRecord.Rotation, RoutePorts, ConnectedPorts, ResolvedVisual);
+	const bool bResolvedVisual = FAtomicBeltVisualResolver::ResolveBeltVisual(PreviewBeltRecord.RouteType, PreviewBeltRecord.InputPort, PreviewBeltRecord.OutputPort, ConnectedRoutePorts, ResolvedVisual);
+	if (!bResolvedVisual)
+	{
+		return false;
+	}
+
+	OutResolvedPreview.RouteType = PreviewBeltRecord.RouteType;
+	OutResolvedPreview.InputPort = PreviewBeltRecord.InputPort;
+	OutResolvedPreview.OutputPort = PreviewBeltRecord.OutputPort;
+
+	OutResolvedPreview.RoutePorts = RoutePorts;
+	OutResolvedPreview.ConnectedRoutePorts = MoveTemp(ConnectedRoutePorts);
 	
 	OutResolvedPreview.VisualVariant = ResolvedVisual.VisualVariant;
 	OutResolvedPreview.VisualRotation = ResolvedVisual.VisualRotation;
+	
 	OutResolvedPreview.bReverseMaterialFlow = ResolvedVisual.bReverseMaterialFlow;
-	OutResolvedPreview.BeltShape = PreviewBeltRecord.Shape;
-	OutResolvedPreview.RouteRotation = PreviewBeltRecord.Rotation;
-	OutResolvedPreview.OutputFlowDirection = PreviewBeltRecord.OutputFlowDirection;
-	OutResolvedPreview.RoutePorts = RoutePorts;
-	OutResolvedPreview.ConnectedRoutePorts = ConnectedPorts;
 	OutResolvedPreview.bIsValid = bResolvedVisual;
 	
 	return OutResolvedPreview.bIsValid;
