@@ -1,12 +1,13 @@
 ﻿// Copyright (c) 2026 Dreamboy Games Pty Ltd. All rights reserved.
 
-
 #include "Building/AtomicBuildingActor.h"
+
 #include "AtomicStarlines.h"
 #include "Building/AtomicBuildingDefinition.h"
-#include "Building/AtomicBuildingTypes.h"
+#include "ProjectTypes/AtomicBuildingTypes.h"
 #include "Components/ArrowComponent.h"
 #include "Components/BoxComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Grid/AtomicGridLibrary.h"
 
@@ -14,19 +15,31 @@
 AAtomicBuildingActor::AAtomicBuildingActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
+
+	// Building actors are local visual/gameplay representations reconstructed from replicated build records.
+	// The authoritative state is the grid/build record, not the actor instance.
 	bReplicates = false;
-	
+
 	BuildingRoot = CreateDefaultSubobject<USceneComponent>(TEXT("BuildingRoot"));
 	RootComponent = BuildingRoot;
-	
+
 	BaseMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BaseMeshComponent"));
 	BaseMesh->SetupAttachment(BuildingRoot);
 	BaseMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	
+
 	FootprintCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("FootprintCollision"));
 	FootprintCollision->SetupAttachment(BuildingRoot);
-	FootprintCollision->SetCollisionProfileName("Building");
+	FootprintCollision->SetCollisionProfileName(TEXT("Building"));
 	FootprintCollision->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+}
+
+void AAtomicBuildingActor::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+#if WITH_EDITOR
+	RebuildEditorPreview();
+#endif
 }
 
 void AAtomicBuildingActor::InitializePlacedBuilding(const FGuid& InBuildingInstanceID, const FName InBuildingID, const FIntVector InAnchorCoord, const EBuildingRotation InRotation, AAtomicShipGrid* InOwningGrid)
@@ -40,27 +53,35 @@ void AAtomicBuildingActor::InitializePlacedBuilding(const FGuid& InBuildingInsta
 
 void AAtomicBuildingActor::ConfigureFootprintCollision(const FIntPoint FootprintSize, const float CellSize) const
 {
-	if (!FootprintCollision) return;
-	FootprintCollision->SetBoxExtent(FVector(FootprintSize.X * CellSize * 0.5, FootprintSize.Y * CellSize * 0.5f, 250.f), true);
+	if (!FootprintCollision)
+	{
+		return;
+	}
+
+	FootprintCollision->SetBoxExtent(
+		FVector(
+			FootprintSize.X * CellSize * 0.5f,
+			FootprintSize.Y * CellSize * 0.5f,
+			250.f
+		),
+		true
+	);
 }
 
 void AAtomicBuildingActor::Interact()
 {
-	UE_LOGFMT(LogGame, Warning, "Player interacted with: {ObjectName}", this->GetName());
+	UE_LOGFMT(
+		LogGame,
+		Warning,
+		"Player interacted with: {ObjectName}",
+		this->GetName()
+	);
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // EDITOR DEBUG PREVIEW
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void AAtomicBuildingActor::OnConstruction(const FTransform& Transform)
-{
-	Super::OnConstruction(Transform);
-	
-#if WITH_EDITOR
-	RebuildEditorPreview();
-#endif
-}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #if WITH_EDITOR
 
@@ -71,49 +92,61 @@ void AAtomicBuildingActor::RefreshEditorPreview()
 
 void AAtomicBuildingActor::CenterMeshOnFootprint() const
 {
-	if (!BaseMesh) return;
-	
+	if (!BaseMesh)
+	{
+		return;
+	}
+
 	UStaticMesh* StaticMesh = BaseMesh->GetStaticMesh();
-	if (!StaticMesh) return;
-	
+	if (!StaticMesh)
+	{
+		return;
+	}
+
 	const FBox LocalBounds = StaticMesh->GetBoundingBox();
 	const FVector LocalCenter = LocalBounds.GetCenter();
 	const FRotator MeshRotation = BaseMesh->GetRelativeRotation();
-	
-	const FVector RotatedCenterXY = MeshRotation.RotateVector(FVector(LocalCenter.X, LocalCenter.Y, 0));
-	const float ZOffset = -LocalBounds.Min.Z;
-	
-	// keeps mesh scale and rotation, and offsets the mesh so its bounds center aligns to actor root.
-	BaseMesh->SetRelativeLocation(FVector(-RotatedCenterXY.X, -RotatedCenterXY.Y, ZOffset));
-}
-#endif
 
+	const FVector RotatedCenterXY =
+		MeshRotation.RotateVector(FVector(LocalCenter.X, LocalCenter.Y, 0.f));
+
+	const float ZOffset = -LocalBounds.Min.Z;
+
+	// Keeps mesh scale and rotation, and offsets the mesh so its bounds center aligns to actor root.
+	BaseMesh->SetRelativeLocation(
+		FVector(
+			-RotatedCenterXY.X,
+			-RotatedCenterXY.Y,
+			ZOffset
+		)
+	);
+}
 
 void AAtomicBuildingActor::RebuildEditorPreview()
 {
-#if WITH_EDITOR
 	ClearEditorPreview();
 	RebuildFootprintPreview();
 	RebuildPortPreview();
-#endif
 }
 
 void AAtomicBuildingActor::ClearEditorPreview()
 {
-#if WITH_EDITOR
 	TArray<UActorComponent*> Components;
 	GetComponents(Components);
-	
+
 	for (UActorComponent* Component : Components)
 	{
-		if (!Component) continue;
-		
+		if (!Component)
+		{
+			continue;
+		}
+
 		const bool bIsPreviewComponent =
 			Component->ComponentHasTag(PortPreviewTag) ||
 			Component->ComponentHasTag(CellPreviewTag) ||
 			Component->ComponentHasTag(PortTextTag) ||
 			Component->ComponentHasTag(CellTextTag);
-		
+
 		if (bIsPreviewComponent)
 		{
 			Component->DestroyComponent();
@@ -124,51 +157,86 @@ void AAtomicBuildingActor::ClearEditorPreview()
 	PortPreviewTexts.Reset();
 	FootprintPreviewBoxes.Reset();
 	FootprintPreviewTexts.Reset();
-#endif
 }
 
 void AAtomicBuildingActor::RebuildPortPreview()
 {
-#if WITH_EDITOR
 	USceneComponent* Root = GetRootComponent();
-	if (!Root || BuildingDefinition.IsNull()) return;
-	
+	if (!Root || BuildingDefinition.IsNull())
+	{
+		return;
+	}
+
 	UAtomicBuildingDefinition* Definition = BuildingDefinition.LoadSynchronous();
-	if (!Definition) return;
-	
+	if (!Definition)
+	{
+		return;
+	}
+
 	const FIntPoint FootprintSize = Definition->FootprintSize;
-	
+
 	for (int32 PortIndex = 0; PortIndex < Definition->PortDefinitions.Num(); ++PortIndex)
 	{
 		const FAtomicBuildingPortDefinition Port = Definition->PortDefinitions[PortIndex];
-		
-		const bool bIsValidCell = 
+
+		const bool bIsValidCell =
 			Port.LocalCellOffset.X >= 0 &&
 			Port.LocalCellOffset.Y >= 0 &&
 			Port.LocalCellOffset.X < FootprintSize.X &&
 			Port.LocalCellOffset.Y < FootprintSize.Y;
-		
-		const FVector PortEdgeLocation = GetEditorPortEdgeLocation(Port.LocalCellOffset, Port.LocalGridDirection, FootprintSize);
-		const EGridDirection VisualArrowDirection = (Port.PortType == EBuildingPortType::Input) ? UAtomicGridLibrary::OppositeGridDirection(Port.LocalGridDirection) : Port.LocalGridDirection;
-		const FVector VisualArrowVector = UAtomicGridLibrary::GridDirectionToVector(VisualArrowDirection);
-		const float ArrowLength = 50.f;
-		const FVector ArrowLocation = (Port.PortType == EBuildingPortType::Input) ? (PortEdgeLocation - VisualArrowVector * (ArrowLength + 30.f)) : PortEdgeLocation;
-		
-		//const FVector ArrowLocation = GetEditorPortArrowLocation(Port.LocalCellOffset, Port.LocalDirection, FootprintSize);
-		//const EBuildingRotation VisualArrowDirection = (Port.PortType == EBuildingPortType::Input) ? UAtomicGridLibrary::GetOppositeDirection(Port.LocalDirection) : Port.LocalDirection;
-		
-		const float ArrowYaw = UAtomicGridLibrary::GridDirectionToYawDegrees(VisualArrowDirection);
-		const FName ArrowName = MakeUniqueObjectName(this, UArrowComponent::StaticClass(), *FString::Printf(TEXT("PortPreview_%d"), PortIndex));
-		const FColor PortColor = !bIsValidCell ? FColor::Black : ((Port.PortType == EBuildingPortType::Input) ? FColor::Cyan : FColor::Orange);
 
-		// Arrow
+		const FVector PortEdgeLocation =
+			GetEditorPortEdgeLocation(
+				Port.LocalCellOffset,
+				Port.LocalGridDirection,
+				FootprintSize
+			);
+
+		// Input arrows visually point into the building.
+		// Output arrows visually point away from the building.
+		const EGridDirection VisualArrowDirection =
+			Port.PortType == EBuildingPortType::Input
+				? UAtomicGridLibrary::OppositeGridDirection(Port.LocalGridDirection)
+				: Port.LocalGridDirection;
+
+		const FVector VisualArrowVector =
+			UAtomicGridLibrary::GridDirectionToVector(VisualArrowDirection);
+
+		const float ArrowLength = 50.f;
+
+		const FVector ArrowLocation =
+			Port.PortType == EBuildingPortType::Input
+				? PortEdgeLocation - VisualArrowVector * (ArrowLength + 30.f)
+				: PortEdgeLocation;
+
+		const float ArrowYaw =
+			UAtomicGridLibrary::GridDirectionToYawDegrees(VisualArrowDirection);
+
+		const FName ArrowName =
+			MakeUniqueObjectName(
+				this,
+				UArrowComponent::StaticClass(),
+				*FString::Printf(TEXT("PortPreview_%d"), PortIndex)
+			);
+
+		const FColor PortColor =
+			!bIsValidCell
+				? FColor::Black
+				: Port.PortType == EBuildingPortType::Input
+					? FColor::Cyan
+					: FColor::Orange;
+
+		// Arrow.
 		UArrowComponent* Arrow = NewObject<UArrowComponent>(this, ArrowName);
-		if (!Arrow) continue;
+		if (!Arrow)
+		{
+			continue;
+		}
 
 		Arrow->ComponentTags.Add(PortPreviewTag);
 		Arrow->CreationMethod = EComponentCreationMethod::UserConstructionScript;
 		Arrow->SetupAttachment(Root);
-		Arrow->ArrowSize = 1.7;
+		Arrow->ArrowSize = 1.7f;
 		Arrow->ArrowLength = ArrowLength;
 		Arrow->ArrowColor = PortColor;
 		Arrow->SetHiddenInGame(true);
@@ -177,15 +245,22 @@ void AAtomicBuildingActor::RebuildPortPreview()
 		Arrow->SetRelativeRotation(FRotator(0.f, ArrowYaw, 0.f));
 		Arrow->RegisterComponent();
 		Arrow->MarkRenderStateDirty();
-		
+
 		PortPreviewArrows.Add(Arrow);
-		
-		// Port label
-		const float EdgeYaw = UAtomicGridLibrary::GridDirectionToYawDegrees(Port.LocalGridDirection);
-		const float LabelYaw = FRotator::NormalizeAxis(EdgeYaw);
+
+		// Port label.
+		const float EdgeYaw =
+			UAtomicGridLibrary::GridDirectionToYawDegrees(Port.LocalGridDirection);
+
+		const float LabelYaw =
+			FRotator::NormalizeAxis(EdgeYaw);
+
 		UTextRenderComponent* PortText = NewObject<UTextRenderComponent>(this);
-		if (!PortText) continue;
-		
+		if (!PortText)
+		{
+			continue;
+		}
+
 		PortText->ComponentTags.Add(PortTextTag);
 		PortText->CreationMethod = EComponentCreationMethod::UserConstructionScript;
 		PortText->SetupAttachment(Root);
@@ -197,43 +272,67 @@ void AAtomicBuildingActor::RebuildPortPreview()
 		PortText->bCastDynamicShadow = false;
 		PortText->bCastStaticShadow = false;
 		PortText->SetTextRenderColor(PortColor);
-		
-		const FString EdgeDirectionLabel = UAtomicGridLibrary::GetGridDirectionName(Port.LocalGridDirection);
-		const FString PortLabelText = FString::Printf(TEXT("%s\n%s"), *Port.PortID.ToString(), *EdgeDirectionLabel);
+
+		const FString EdgeDirectionLabel =
+			UAtomicGridLibrary::GetGridDirectionName(Port.LocalGridDirection);
+
+		const FString PortLabelText =
+			FString::Printf(
+				TEXT("%s\n%s"),
+				*Port.PortID.ToString(),
+				*EdgeDirectionLabel
+			);
+
 		PortText->SetText(FText::FromString(PortLabelText));
-		
-		// put the label slightly above and inward from the arrow
-		const FVector LabelDirection = UAtomicGridLibrary::GridDirectionToVector(Port.LocalGridDirection) * 65.f;
-		PortText->SetRelativeLocation(PortEdgeLocation + LabelDirection + FVector(0.f, 0.f, 10.f));
-		PortText->SetRelativeRotation(FRotator(90.f, LabelYaw, 0.f)); // tweak if needed
+
+		// Put the label slightly above and outward from the port edge.
+		const FVector LabelDirection =
+			UAtomicGridLibrary::GridDirectionToVector(Port.LocalGridDirection) * 65.f;
+
+		PortText->SetRelativeLocation(
+			PortEdgeLocation + LabelDirection + FVector(0.f, 0.f, 10.f)
+		);
+
+		// Text lies flat on the grid plane.
+		PortText->SetRelativeRotation(FRotator(90.f, LabelYaw, 0.f));
 		PortText->RegisterComponent();
-		
+
 		PortPreviewTexts.Add(PortText);
 	}
-#endif
 }
 
 void AAtomicBuildingActor::RebuildFootprintPreview()
 {
 	USceneComponent* Root = GetRootComponent();
-	if (!Root || BuildingDefinition.IsNull()) return;
-	
+	if (!Root || BuildingDefinition.IsNull())
+	{
+		return;
+	}
+
 	const UAtomicBuildingDefinition* Definition = BuildingDefinition.LoadSynchronous();
-	if (!Definition) return;
-	
+	if (!Definition)
+	{
+		return;
+	}
+
 	const FIntPoint FootprintSize = Definition->FootprintSize;
-	const float CellSize = EditorPreviewCellSize;
-	
+
 	for (int32 Y = 0; Y < FootprintSize.Y; ++Y)
 	{
 		for (int32 X = 0; X < FootprintSize.X; ++X)
 		{
-			const FVector CellCenter = GetEditorLocalFootprintCellCenter(FIntPoint(X, Y), FootprintSize);
-			
-			// Box mesh
+			const FIntPoint CellCoord(X, Y);
+
+			const FVector CellCenter =
+				GetEditorLocalFootprintCellCenter(CellCoord, FootprintSize);
+
+			// Cell footprint preview box.
 			UBoxComponent* CellBox = NewObject<UBoxComponent>(this);
-			if (!CellBox) continue;
-			
+			if (!CellBox)
+			{
+				continue;
+			}
+
 			CellBox->ComponentTags.Add(CellPreviewTag);
 			CellBox->CreationMethod = EComponentCreationMethod::UserConstructionScript;
 			CellBox->SetupAttachment(Root);
@@ -241,30 +340,32 @@ void AAtomicBuildingActor::RebuildFootprintPreview()
 			CellBox->SetCastShadow(false);
 			CellBox->SetHiddenInGame(true);
 			CellBox->bIsEditorOnly = true;
-			
-			// Scale: Engine cube is 100uu, make a thin tile
+
 			const float HalfCell = EditorPreviewCellSize * 0.48f;
 			CellBox->SetBoxExtent(FVector(HalfCell, HalfCell, 4.f));
 			CellBox->SetRelativeLocation(CellCenter + FVector(0.f, 0.f, -2.f));
 			CellBox->ShapeColor = FColor::Black;
-			
+
 			CellBox->RegisterComponent();
 			FootprintPreviewBoxes.Add(CellBox);
-			
-			// Coord labels
-			const FIntPoint CellCoord(X, Y);
-			const TArray<EGridDirection> EdgeGridDirections = {
+
+			// Edge labels for local cell coordinate + direction.
+			const TArray<EGridDirection> EdgeGridDirections =
+			{
 				EGridDirection::North,
 				EGridDirection::East,
 				EGridDirection::South,
-				EGridDirection::West,
+				EGridDirection::West
 			};
-			
+
 			for (const EGridDirection EdgeGridDirection : EdgeGridDirections)
 			{
 				UTextRenderComponent* EdgeText = NewObject<UTextRenderComponent>(this);
-				if (!EdgeText) continue;
-				
+				if (!EdgeText)
+				{
+					continue;
+				}
+
 				EdgeText->ComponentTags.Add(CellTextTag);
 				EdgeText->CreationMethod = EComponentCreationMethod::UserConstructionScript;
 				EdgeText->SetupAttachment(Root);
@@ -277,15 +378,26 @@ void AAtomicBuildingActor::RebuildFootprintPreview()
 				EdgeText->bCastDynamicShadow = false;
 				EdgeText->bCastStaticShadow = false;
 				EdgeText->SetTextRenderColor(FColor::Black);
-				
-				const FString DirectionLabel = UAtomicGridLibrary::GetGridDirectionLabel(EdgeGridDirection);
-				const FString LabelText = FString::Printf(TEXT("%s (%d, %d)"), *DirectionLabel, X, Y);
+
+				const FString DirectionLabel =
+					UAtomicGridLibrary::GetGridDirectionLabel(EdgeGridDirection);
+
+				const FString LabelText =
+					FString::Printf(
+						TEXT("%s (%d, %d)"),
+						*DirectionLabel,
+						X,
+						Y
+					);
+
 				EdgeText->SetText(FText::FromString(LabelText));
-			
-				// upright floating label
-				EdgeText->SetRelativeLocation(GetEditorCellEdgeLabelLocation(CellCoord, FootprintSize, EdgeGridDirection));
-				EdgeText->SetRelativeRotation(GetEditorEdgeLabelRotation(EdgeGridDirection)); // tweak if needed
-				
+				EdgeText->SetRelativeLocation(
+					GetEditorCellEdgeLabelLocation(CellCoord, FootprintSize, EdgeGridDirection)
+				);
+				EdgeText->SetRelativeRotation(
+					GetEditorEdgeLabelRotation(EdgeGridDirection)
+				);
+
 				EdgeText->RegisterComponent();
 				FootprintPreviewTexts.Add(EdgeText);
 			}
@@ -293,37 +405,37 @@ void AAtomicBuildingActor::RebuildFootprintPreview()
 	}
 }
 
-FVector AAtomicBuildingActor::GetEditorLocalFootprintCellCenter(FIntPoint Cell, FIntPoint FootprintSize) const
+FVector AAtomicBuildingActor::GetEditorLocalFootprintCellCenter(const FIntPoint Cell, const FIntPoint FootprintSize) const
 {
-	// This assumes the building actor's root/pivot is the center of its footprint
+	// This assumes the building actor's root/pivot is the center of its footprint.
 	const float CellSize = EditorPreviewCellSize;
 	const float LocalX = (Cell.X + 0.5f - FootprintSize.X * 0.5f) * CellSize;
 	const float LocalY = (Cell.Y + 0.5f - FootprintSize.Y * 0.5f) * CellSize;
-	
+
 	return FVector(LocalX, LocalY, 0.f);
 }
 
 FVector AAtomicBuildingActor::GetEditorLocalCellCoordLabelLocation(const FIntPoint Cell, const FIntPoint FootprintSize) const
 {
-	const FVector CellCenter = GetEditorLocalFootprintCellCenter(Cell, FootprintSize);
+	const FVector CellCenter =	GetEditorLocalFootprintCellCenter(Cell, FootprintSize);
 	const float OutsideOffset = 26.f;
-	
-	// put label just outside the south edge of the cell
-	return CellCenter + FVector(0.f, EditorPreviewCellSize * 0.5f + OutsideOffset, 0.f);
+
+	// Put label just outside the south edge of the cell.
+	return CellCenter +	FVector(0.f, EditorPreviewCellSize * 0.5f + OutsideOffset, 0.f);
 }
-
-
 
 FVector AAtomicBuildingActor::GetEditorPortEdgeLocation(const FIntPoint LocalCellOffset, const EGridDirection LocalGridDirection, const FIntPoint FootprintSize) const
 {
 	const FVector CellCenter = GetEditorLocalFootprintCellCenter(LocalCellOffset, FootprintSize);
 	const FVector Direction = UAtomicGridLibrary::GridDirectionToVector(LocalGridDirection);
-	
+
 	const float EdgeOffset = EditorPreviewCellSize * 0.5f;
 	const float OutsideOffset = 5.f;
 	const float Height = 40.f;
-	
-	return CellCenter + Direction * (EdgeOffset + OutsideOffset) + FVector(0.f, 0.f, Height);
+
+	return CellCenter +
+		Direction * (EdgeOffset + OutsideOffset) +
+		FVector(0.f, 0.f, Height);
 }
 
 FVector AAtomicBuildingActor::GetEditorCellEdgeLabelLocation(const FIntPoint Cell, const FIntPoint FootprintSize, const EGridDirection EdgeGridDirection) const
@@ -335,12 +447,13 @@ FVector AAtomicBuildingActor::GetEditorCellEdgeLabelLocation(const FIntPoint Cel
 	const float OutsideOffset = 30.f;
 	const float Height = 0.f;
 
-	return CellCenter + Direction * (EdgeOffset + OutsideOffset) + FVector(0.f, 0.f, Height);
+	return CellCenter +	Direction * (EdgeOffset + OutsideOffset) + FVector(0.f, 0.f, Height);
 }
 
 FRotator AAtomicBuildingActor::GetEditorEdgeLabelRotation(const EGridDirection EdgeGridDirection) const
 {
 	const float EdgeYaw = UAtomicGridLibrary::GridDirectionToYawDegrees(EdgeGridDirection);
-
 	return FRotator(90.f, EdgeYaw, 0.f);
 }
+
+#endif

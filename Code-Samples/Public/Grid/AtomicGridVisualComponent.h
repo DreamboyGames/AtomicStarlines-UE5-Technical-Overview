@@ -6,7 +6,6 @@
 #include "Components/ActorComponent.h"
 #include "AtomicGridVisualComponent.generated.h"
 
-
 struct FAtomicResolvedPreviewBelt;
 struct FAtomicResolvedBeltVisual;
 class UAtomicBeltDefinition;
@@ -69,6 +68,7 @@ private:
 	UPROPERTY(Transient)
 	TMap<FGuid, TObjectPtr<AAtomicBuildingActor>> LocalBuildingActorsByID;
 	
+	// @todo: one HISM per BeltDefinition + VisualVariant, or one HISM per StaticMesh. This map is insufficient for multiple belt definitions with different meshes.
 	UPROPERTY(Transient)
 	TMap<EAtomicBeltVisualVariant, TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> BeltInstanceComponents;
 	

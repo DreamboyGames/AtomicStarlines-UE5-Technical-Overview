@@ -3,7 +3,7 @@
 
 #include "Player/Components/AtomicInteractionComponent.h"
 
-#include "AtomicGameTypes.h"
+#include "ProjectTypes/AtomicGameTypes.h"
 #include "AtomicStarlines.h"
 #include "Engine/OverlapResult.h"
 #include "Interface/AtomicInteractionInterface.h"

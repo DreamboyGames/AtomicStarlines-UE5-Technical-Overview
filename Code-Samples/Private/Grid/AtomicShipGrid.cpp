@@ -3,14 +3,11 @@
 
 #include "Grid/AtomicShipGrid.h"
 
-#include "AtomicGameTypes.h"
-#include "VisualizeTexture.h"
-#include "Belts/AtomicBeltTypes.h"
 #include "Components/BoxComponent.h"
 #include "Grid/AtomicGridDataComponent.h"
-#include "Grid/AtomicGridLibrary.h"
 #include "Grid/AtomicGridPlacementComponent.h"
 #include "Grid/AtomicGridVisualComponent.h"
+#include "ProjectTypes/AtomicGameTypes.h"
 
 
 AAtomicShipGrid::AAtomicShipGrid()

@@ -376,7 +376,7 @@ void AAtomicPlayerController::PlaceConveyorBeltAction()
 	
 	bIsBuildMenuOpen = true;
 	bIsPlacementMode = true;
-	PlacementController->StartPlacementWithSelectedBelt(FName("ConveyorBelt"), EAtomicBeltRouteType::Straight);
+	PlacementController->StartPlacementWithSelectedBelt(FName("DefaultBelt"));
 }
 
 
@@ -424,15 +424,19 @@ void AAtomicPlayerController::Server_RequestPlaceBuilding_Implementation(const F
 	const UAtomicGridPlacementComponent* PlacementComponent = TargetGrid->GetGridPlacementComponent();
 	if (!PlacementComponent) return;
 
-	const bool bPlaced = PlacementComponent->TryPlaceBuilding(BuildingID, AnchorCoord, Rotation, RequestingPawn);
+	FGuid BuildingInstanceID;
+	const bool bPlacedSuccessfully = PlacementComponent->TryPlaceBuilding(BuildingID, AnchorCoord, Rotation, RequestingPawn, BuildingInstanceID);
 	
-	if (!bPlaced)
+	if (bPlacedSuccessfully)
+	{
+		UE_LOG(LogGame, Log, TEXT("Placement Successful!"));
+		Client_PlaceBuildingAccepted(BuildingInstanceID);
+	}
+	else
 	{
 		UE_LOG(LogGame, Warning, TEXT("TryPlaceBuilding = False!"));
 		Client_PlaceBuildingRejected(EAtomicPlacementFailReason::Blocked);
 	}
-	
-	UE_LOG(LogGame, Log, TEXT("Placement Successful!"));
 }
 
 void AAtomicPlayerController::Client_PlaceBuildingAccepted_Implementation(const FGuid& BuildInstanceID)
@@ -450,7 +454,7 @@ void AAtomicPlayerController::Client_PlaceBuildingRejected_Implementation(EAtomi
 // ---------------------------------------------------------------------
 // Request Place BELT
 // ---------------------------------------------------------------------
-void AAtomicPlayerController::Server_RequestPlaceBelt_Implementation(const FName BuildingID, const FIntVector AnchorCoord, const EAtomicBeltRouteType BeltShape, const EGridDirection InputPort, const EGridDirection OutputPort, const AAtomicShipGrid* TargetGrid)
+void AAtomicPlayerController::Server_RequestPlaceBeltLine_Implementation(const FName BeltID, const TArray<FAtomicBeltPlacementCell>& BeltCells, const AAtomicShipGrid* TargetGrid)
 {
 	UE_LOG(LogGame, Log, TEXT("Server_RequestPlaceBuilding_Implementation"));
 	if (!TargetGrid || !TargetGrid->HasAuthority()) return;
@@ -458,26 +462,30 @@ void AAtomicPlayerController::Server_RequestPlaceBelt_Implementation(const FName
 	const APawn* RequestingPawn = GetPawn();
 	if (!RequestingPawn) return;
 
-	const UAtomicGridPlacementComponent* PlacementComponent = TargetGrid->GetGridPlacementComponent();
+	UAtomicGridPlacementComponent* PlacementComponent = TargetGrid->GetGridPlacementComponent();
 	if (!PlacementComponent) return;
 
-	const bool bPlaced = PlacementComponent->TryPlaceBelt(BuildingID, AnchorCoord, BeltShape, InputPort, OutputPort, RequestingPawn);
+	FGuid BeltLineInstanceID;
+	const bool bPlacedSuccessfully = PlacementComponent->TryPlaceBeltLine(BeltID, BeltCells, RequestingPawn, BeltLineInstanceID);
 	
-	if (!bPlaced)
+	if (bPlacedSuccessfully)
+	{
+		UE_LOG(LogGame, Log, TEXT("Placement Successful!"));
+		Client_PlaceBeltLineAccepted(BeltLineInstanceID);
+	}
+	else
 	{
 		UE_LOG(LogGame, Warning, TEXT("TryPlaceBelt = False!"));
-		Client_PlaceBeltRejected(EAtomicPlacementFailReason::Blocked);
+		Client_PlaceBeltLineRejected(EAtomicPlacementFailReason::Blocked);
 	}
-	
-	UE_LOG(LogGame, Log, TEXT("Placement Successful!"));
 }
 
-void AAtomicPlayerController::Client_PlaceBeltAccepted_Implementation(const FGuid& BuildInstanceID)
+void AAtomicPlayerController::Client_PlaceBeltLineAccepted_Implementation(const FGuid& BeltLineID)
 {
 	
 }
 
-void AAtomicPlayerController::Client_PlaceBeltRejected_Implementation(EAtomicPlacementFailReason Reason)
+void AAtomicPlayerController::Client_PlaceBeltLineRejected_Implementation(EAtomicPlacementFailReason Reason)
 {
 	
 }

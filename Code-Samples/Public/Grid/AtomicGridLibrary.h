@@ -3,9 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AtomicGridTypes.h"
-#include "Belts/AtomicBeltTypes.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "ProjectTypes/AtomicBeltTypes.h"
 #include "AtomicGridLibrary.generated.h"
 
 struct FAtomicBuildingPortDefinition;
@@ -155,30 +154,11 @@ public:
 	static EGridDirection GetDefaultOutputPort(const EAtomicBeltRouteType RouteType);
 	
 	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
-	static EGridDirection GetOutputPortForInput(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort);
+	static EGridDirection DirectionFromCoordToCoord(const FIntVector& FromCoord, const FIntVector& ToCoord);
 	
 	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
-	static void GetRoutePortsForInput(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, TArray<EGridDirection>& OutRoutePorts);
+	static EBuildingRotation GetBeltVisualRotationFromInputPort(const EGridDirection InputPort);
 	
-	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
-	static bool TryGetRouteTypeForInputAndOutput(const EGridDirection InputPort, const EGridDirection OutputPort, EAtomicBeltRouteType& OutRouteType);
-	
-	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
-	static bool TryGetInputPortForRouteTypeAndOutput(const EAtomicBeltRouteType RouteType, const EGridDirection OutputPort, EGridDirection& OutInputPort);
-	
-	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
-	static void GetRoutePortsForBuildingRotation(const EAtomicBeltRouteType RouteType, const EBuildingRotation BuildingRotation, TArray<EGridDirection>& OutRoutePorts);
-	
-	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
-	static EGridDirection GetInputPortForBuildingRotation(const EBuildingRotation BuildingRotation);
-	
-	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
-	static EGridDirection GetOutputPortForBuildingRotation(const EAtomicBeltRouteType RouteType, const EBuildingRotation BuildingRotation);
-	
-	UFUNCTION(BlueprintPure, Category = "AtomicStarlines|GridLibrary|Belts")
-	static EBuildingRotation GetBuildingRotationForInputPort(const EGridDirection InputPort);
-
-
 	
 private:
 	static int32 BuildingRotationToCardinalIndex(const EBuildingRotation BuildingRotation);

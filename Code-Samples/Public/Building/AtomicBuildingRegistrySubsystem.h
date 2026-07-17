@@ -26,7 +26,6 @@ private:
 	UPROPERTY()
 	TObjectPtr<UAtomicBuildingDatabase> BuildingDatabase;
 	
-	
 	// Runtime Cache
 	UPROPERTY()
 	TMap<FName, TObjectPtr<UAtomicBuildingDefinition>> BuildingDefinitionMap;

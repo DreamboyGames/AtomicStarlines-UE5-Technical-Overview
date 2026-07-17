@@ -3,13 +3,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AtomicGridTypes.h"
+
 #include "Belts/AtomicBeltRecords.h"
 #include "Building/AtomicBuildingRecords.h"
 #include "Components/ActorComponent.h"
 #include "AtomicGridDataComponent.generated.h"
 
-
+enum class EGridOccupancyType : uint8;
+struct FAtomicGridCell;
+struct FAtomicBeltLineRecord;
 struct FAtomicBeltRecord;
 struct FAtomicBuildingRecord;
 class UAtomicGridVisualComponent;
@@ -59,6 +61,7 @@ public:
 	bool RemoveBuildingRecord(const FGuid& BuildInstanceID);
 	
 	bool AddBeltRecord(const FAtomicBeltRecord& NewRecord);
+	bool AddBeltRecords(const TArray<FAtomicBeltRecord>& NewRecords);
 	void MarkBeltRecordChanged(FAtomicBeltRecord& Record);
 	bool RemoveBeltRecord(const FGuid& InstanceID);
 	// ---------------------------------------------------------------------
@@ -73,6 +76,7 @@ public:
 	void HandleBuildingRecordRemoved(const FAtomicBuildingRecord& Record);
 	
 	void HandleBeltRecordAdded(const FAtomicBeltRecord& Record);
+	void HandleBeltRecordsAdded(const TArray<FAtomicBeltRecord>& Records);
 	void HandleBeltRecordChanged(const FAtomicBeltRecord& Record);
 	void HandleBeltRecordRemoved(const FAtomicBeltRecord& Record);
 	// ---------------------------------------------------------------------
@@ -84,14 +88,7 @@ public:
 	FAtomicBeltRecord* FindBeltRecordAtIndex(const int32 Index);
 	const FAtomicBeltRecord* FindBeltRecordAtIndex(const int32 Index) const;
 	const FAtomicBeltRecord* GetNeighbourBeltRecord(const int32 Index, const EGridDirection Direction) const;
-
-	void GetRoutePortsForBeltRecord(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutRoutePorts) const;
-	void GetConnectedRoutePortsForBeltRecord(const FAtomicBeltRecord& BeltRecord, TArray<EGridDirection>& OutConnectedRoutePorts) const;
-	void GetConnectedRoutePortsForBeltCandidate(const int32 CellIndex, const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, const EGridDirection OutputPort, TArray<EGridDirection>& OutConnectedRoutePorts) const;
-
-	bool DoesBeltRecordHavePort(const FAtomicBeltRecord& BeltRecord, EGridDirection Port) const;
-	bool HasReciprocalBeltConnectionAtPort(const int32 Index, const EGridDirection PortDirection) const;
-	bool HasAnyNeighbourBeltConnection(const int32 Index) const;
+	
 
 	// ---------------------------------------------------------------------
 	
@@ -147,18 +144,8 @@ private:
 	UPROPERTY(Replicated, VisibleAnywhere, Category="AtomicGrid")
 	FAtomicBeltRecordArray BeltRecords;
 	
-	
-	// PlacedBuildRecords Flow:
-	// SERVER AddPlacedBuildRecord()
-	// -> Items.Add
-	// -> MarkItemDirty
-	// -> Server manually applies occupancy + visual spawn
-	// -> ForceNetUpdate
-	//
-	// CLIENT receives delta
-	// -> PostReplicatedAdd
-	// -> Client applies occupancy + visual spawn for only that one record
-
+	UPROPERTY(Transient) // Derived runtime grouping.
+	TMap<FGuid, FAtomicBeltLineRecord> BeltLineRecordsByLineID;
 	
 	bool bGridInitialized = false;
 

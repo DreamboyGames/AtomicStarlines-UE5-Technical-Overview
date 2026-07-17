@@ -10,8 +10,9 @@
 // The database is the library.
 // The registry is the librarian.
 
-class UAtomicBeltDefinition;
 class UAtomicBuildingDefinition;
+class UAtomicBeltDefinition;
+
 /**
  * 
  */

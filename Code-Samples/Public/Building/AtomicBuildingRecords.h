@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "Grid/AtomicGridTypes.h"
+#include "ProjectTypes/AtomicGridTypes.h"
 #include "Net/Serialization/FastArraySerializer.h"
 #include "AtomicBuildingRecords.generated.h"
 

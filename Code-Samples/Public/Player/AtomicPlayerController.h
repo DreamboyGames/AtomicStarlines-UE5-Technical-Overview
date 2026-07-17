@@ -3,12 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AtomicGameTypes.h"
+
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
+#include "ProjectTypes/AtomicGameTypes.h"
 #include "AtomicPlayerController.generated.h"
 
-enum class EAtomicBeltRouteType : uint8;
+struct FAtomicBeltPlacementCell;
 enum class EGridDirection : uint8;
 enum class EBuildingRotation : uint8;
 enum class EPlacementMode : uint8;
@@ -69,20 +70,20 @@ public:
 	void Server_RequestPlaceBuilding(const FName BuildingID, const FIntVector AnchorCoord, const EBuildingRotation Rotation, const AAtomicShipGrid* TargetGrid);
 	
 	UFUNCTION(Server, Reliable)
-	void Server_RequestPlaceBelt(const FName BuildingID, const FIntVector AnchorCoord, const EAtomicBeltRouteType BeltShape, const EGridDirection InputPort, const EGridDirection OutputPort, const AAtomicShipGrid* TargetGrid);
+	void Server_RequestPlaceBeltLine(const FName BeltID, const TArray<FAtomicBeltPlacementCell>& BeltCells, const AAtomicShipGrid* TargetGrid);
 	
 	//// CLIENT FUNCTIONS ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	UFUNCTION(Client, Reliable)
 	void Client_PlaceBuildingAccepted(const FGuid& BuildInstanceID);
 	
 	UFUNCTION(Client, Reliable)
-	void Client_PlaceBeltAccepted(const FGuid& BuildInstanceID);
+	void Client_PlaceBeltLineAccepted(const FGuid& BeltLineID);
 
 	UFUNCTION(Client, Reliable)
 	void Client_PlaceBuildingRejected(EAtomicPlacementFailReason Reason);
 	
 	UFUNCTION(Client, Reliable)
-	void Client_PlaceBeltRejected(EAtomicPlacementFailReason Reason);
+	void Client_PlaceBeltLineRejected(EAtomicPlacementFailReason Reason);
 	
 	//// END OF SERVER FUNCTIONS/////////////////////
 	// Server:

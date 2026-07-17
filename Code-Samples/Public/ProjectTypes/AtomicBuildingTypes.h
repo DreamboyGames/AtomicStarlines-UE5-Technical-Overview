@@ -1,7 +1,7 @@
 ﻿// Copyright (c) 2026 Dreamboy Games Pty Ltd. All rights reserved.
 
 #pragma once
-#include "Grid/AtomicGridTypes.h"
+#include "AtomicGridTypes.h"
 #include "AtomicBuildingTypes.generated.h"
 
 USTRUCT(BlueprintType)

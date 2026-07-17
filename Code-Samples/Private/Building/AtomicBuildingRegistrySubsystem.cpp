@@ -9,7 +9,6 @@
 #include "Building/AtomicBuildingDefinition.h"
 #include "Core/AtomicProjectSettings.h"
 
-
 void UAtomicBuildingRegistrySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -25,7 +24,6 @@ void UAtomicBuildingRegistrySubsystem::Initialize(FSubsystemCollectionBase& Coll
 		return;
 	}
 
-	// Building Definitions
 	for (UAtomicBuildingDefinition* Definition : BuildingDatabase->BuildingDefinitions)
 	{
 		if (!Definition) continue;
@@ -33,7 +31,6 @@ void UAtomicBuildingRegistrySubsystem::Initialize(FSubsystemCollectionBase& Coll
 		BuildingDefinitionMap.Add(Definition->BuildingID, Definition);
 	}
 	
-	// Belt Definitions
 	for (UAtomicBeltDefinition* Definition : BuildingDatabase->BeltDefinitions)
 	{
 		if (!Definition) continue;
@@ -61,4 +58,6 @@ UAtomicBeltDefinition* UAtomicBuildingRegistrySubsystem::FindBeltDefinition(cons
 	
 	return nullptr;
 }
+
+
 

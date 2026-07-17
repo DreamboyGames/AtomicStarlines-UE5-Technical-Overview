@@ -1,7 +1,7 @@
 ﻿// Copyright (c) 2026 Dreamboy Games Pty Ltd. All rights reserved.
 
 #pragma once
-#include "Grid/AtomicGridTypes.h"
+#include "AtomicGridTypes.h"
 #include "AtomicBeltTypes.generated.h"
 
 struct FAtomicBeltRecord;
@@ -10,36 +10,36 @@ enum class EBuildingRotation : uint8;
 
 UENUM(BlueprintType)
 enum class EAtomicBeltRouteType : uint8 {
-	// Straight: Default Orientation { Input West -> Output East }
-	Straight,
-	// CornerUp: Default Orientation { Input West -> Output North }
-	TurnLeft,
-	// CornerDown: Default Orientation { Input West -> Output South }
-	TurnRight
+	Straight,	// Straight: Default Orientation { Input West -> Output East }
+	TurnLeft,	// TurnLeft: Default Orientation { Input West -> Output North }
+	TurnRight	// TurnRight: Default Orientation { Input West -> Output South }
 };
 
 UENUM(BlueprintType)
 enum class EAtomicBeltVisualVariant : uint8 {
-	Straight,
-	StraightEnd,
-	StraightEndDouble,
-	
+	Straight,	
 	TurnLeft,
-	TurnLeftEndInputConnected,		// open input, cap output
-	TurnLeftEndOutputConnected,		// open output, cap input
-	TurnLeftEndDouble,
-	
 	TurnRight,
-	TurnRightEndInputConnected,		// open input, cap output
-	TurnRightEndOutputConnected,	// open output, cap input
-	TurnRightEndDouble
 };
 
-UENUM(BlueprintType)
-enum class EAtomicBeltConnectionRole : uint8 {
-	None,
-	InputPort,
-	OutputPort
+USTRUCT(BlueprintType)
+struct FAtomicBeltPlacementCell {
+	GENERATED_BODY()
+	
+	UPROPERTY(BlueprintReadOnly)
+	FIntVector GridCoord = FIntVector::ZeroValue;
+	
+	UPROPERTY(BlueprintReadOnly)
+	int32 CellIndex = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly)
+	EAtomicBeltVisualVariant VisualVariant;
+	
+	UPROPERTY(BlueprintReadOnly)
+	EGridDirection InputPort = EGridDirection::West;
+
+	UPROPERTY(BlueprintReadOnly)
+	EGridDirection OutputPort = EGridDirection::East;
 };
 
 USTRUCT(BlueprintType)
@@ -47,7 +47,7 @@ struct FAtomicResolvedBeltVisual {
 	GENERATED_BODY()
 	
 	UPROPERTY(BlueprintReadOnly)
-	EAtomicBeltVisualVariant VisualVariant = EAtomicBeltVisualVariant::StraightEndDouble;
+	EAtomicBeltVisualVariant VisualVariant = EAtomicBeltVisualVariant::Straight;
 	
 	UPROPERTY(BlueprintReadOnly)
 	EBuildingRotation VisualRotation = EBuildingRotation::East;
@@ -65,19 +65,6 @@ struct FAtomicResolvedBeltVisual {
 	bool bIsValid = false;
 };
 
-struct FAtomicBeltPlacementCandidate {
-	// Shape/Path from Input to Output
-	EAtomicBeltRouteType RouteType;
-	EBuildingRotation RouteRotation;
-	EGridDirection InputPort;
-	EGridDirection OutputPort;
-	
-	// Derived: { InputPort, OutputPort }
-	TArray<EGridDirection> RoutePorts;
-	TArray<EGridDirection> ConnectedRoutePorts;
-	
-	int32 Score = 0;
-};
 
 struct FAtomicResolvedPreviewBelt {
 	// Shape/Path from Input to Output
@@ -101,7 +88,15 @@ struct FAtomicResolvedPreviewBelt {
 // ---------------------------------------------------------------------
 // BELT LOGIC PURE HELPERS
 // ---------------------------------------------------------------------
-// These Functions Assume:
+
+// Visual Resolver
+struct FAtomicBeltVisualResolver {
+	//static bool ResolveBeltVisual(const EAtomicBeltRouteType RouteType, EGridDirection InputPort, EGridDirection OutputPort, const TArray<EGridDirection>& ConnectedRoutePorts, FAtomicResolvedBeltVisual& OutResolvedVisual);
+	static bool ResolveVisualVariantFromPorts(const EGridDirection InputPort, const EGridDirection OutputPort, EAtomicBeltVisualVariant& OutVariant);
+	static bool ResolveVisualRotationFromPorts(const EGridDirection InputPort, const EGridDirection , EBuildingRotation& OutRotation);
+};
+
+// THESE FUNCTIONS ASSUME:
 //
 // Rotation = direction the belt piece is extending / capped toward.
 // Connected/Open Port = Opposite(Rotation)
@@ -123,8 +118,3 @@ struct FAtomicResolvedPreviewBelt {
 // CornerDownEnd:
 // - open RoutePorts[1]
 // - cap  RoutePorts[0]
-
-// Visual Resolver
-struct FAtomicBeltVisualResolver {
-	static bool ResolveBeltVisual(const EAtomicBeltRouteType RouteType, EGridDirection InputPort, EGridDirection OutputPort, const TArray<EGridDirection>& ConnectedRoutePorts, FAtomicResolvedBeltVisual& OutResolvedVisual);
-};

@@ -2,8 +2,8 @@
 
 
 #include "Grid/AtomicGridLibrary.h"
-#include "Building/AtomicBuildingTypes.h"
-#include "Belts/AtomicBeltTypes.h"
+#include "ProjectTypes/AtomicBeltTypes.h"
+#include "ProjectTypes/AtomicBuildingTypes.h"
 
 
 // FVector    -- float X, Y, Z
@@ -582,91 +582,19 @@ EGridDirection UAtomicGridLibrary::GetDefaultOutputPort(const EAtomicBeltRouteTy
 	}
 }
 
-EGridDirection UAtomicGridLibrary::GetOutputPortForInput(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort)
+EGridDirection UAtomicGridLibrary::DirectionFromCoordToCoord(const FIntVector& FromCoord, const FIntVector& ToCoord)
 {
-	const EGridDirection DefaultInputPort = GetDefaultInputPort(RouteType);
-	const EGridDirection DefaultOutputPort = GetDefaultOutputPort(RouteType);
+	const FIntVector Delta = ToCoord - FromCoord;
 	
-	const int32 InputDelta = GridDirectionToCardinalIndex(InputPort) - GridDirectionToCardinalIndex(DefaultInputPort);
-	return CardinalIndexToGridDirection(GridDirectionToCardinalIndex(DefaultOutputPort) + InputDelta);
-}
-
-void UAtomicGridLibrary::GetRoutePortsForInput(const EAtomicBeltRouteType RouteType, const EGridDirection InputPort, TArray<EGridDirection>& OutRoutePorts)
-{
-	OutRoutePorts.Reset();
-	OutRoutePorts.Reserve(2);
+	if (Delta.X > 0) return EGridDirection::East;
+	if (Delta.X < 0) return EGridDirection::West;
+	if (Delta.Y > 0) return EGridDirection::South;
+	if (Delta.Y < 0) return EGridDirection::North;
 	
-	const EGridDirection OutputPort = GetOutputPortForInput(RouteType, InputPort);
-	
-	OutRoutePorts.Add(InputPort);
-	OutRoutePorts.Add(OutputPort);
+	return EGridDirection::East;	//Fallback
 }
 
-bool UAtomicGridLibrary::TryGetRouteTypeForInputAndOutput(const EGridDirection InputPort, const EGridDirection OutputPort, EAtomicBeltRouteType& OutRouteType)
-{
-	if (InputPort == OutputPort) return false;
-	
-	constexpr EGridDirection DefaultInputPort = EGridDirection::West;
-	
-	const int32 InputDelta = GridDirectionToCardinalIndex(InputPort) - GridDirectionToCardinalIndex(DefaultInputPort);	
-	const EGridDirection LocalOutput = CardinalIndexToGridDirection(GridDirectionToCardinalIndex(OutputPort) - InputDelta);
-
-	switch (LocalOutput)
-	{
-	case EGridDirection::East:
-		OutRouteType = EAtomicBeltRouteType::Straight;
-		return true;
-		
-	case EGridDirection::North:
-		OutRouteType = EAtomicBeltRouteType::TurnLeft;
-		return true;
-		
-	case EGridDirection::South:
-		OutRouteType = EAtomicBeltRouteType::TurnRight;
-		return true;
-		
-	default:
-		return false;
-	}
-}
-
-bool UAtomicGridLibrary::TryGetInputPortForRouteTypeAndOutput(const EAtomicBeltRouteType RouteType, const EGridDirection OutputPort, EGridDirection& OutInputPort)
-{
-	for (const EGridDirection TestInputPort : AllDirections)
-	{
-		if (TestInputPort == OutputPort) continue;
-		
-		const EGridDirection TestOutputPort = GetOutputPortForInput(RouteType, TestInputPort);
-		if (TestOutputPort == OutputPort)
-		{
-			OutInputPort = TestInputPort;
-			return true;
-		}
-	}
-	
-	return false;
-}
-
-
-void UAtomicGridLibrary::GetRoutePortsForBuildingRotation(const EAtomicBeltRouteType RouteType, const EBuildingRotation BuildingRotation, TArray<EGridDirection>& OutRoutePorts)
-{
-	const EGridDirection InputPort = GetInputPortForBuildingRotation(BuildingRotation);
-	GetRoutePortsForInput(RouteType, InputPort, OutRoutePorts);
-}
-
-EGridDirection UAtomicGridLibrary::GetInputPortForBuildingRotation(const EBuildingRotation BuildingRotation)
-{
-	const EGridDirection FacingDirection = BuildingRotationToGridDirection(BuildingRotation);
-	return OppositeGridDirection(FacingDirection);
-}
-
-EGridDirection UAtomicGridLibrary::GetOutputPortForBuildingRotation(const EAtomicBeltRouteType RouteType, const EBuildingRotation BuildingRotation)
-{
-	const EGridDirection InputPort = GetInputPortForBuildingRotation(BuildingRotation);
-	return GetOutputPortForInput(RouteType, InputPort);
-}
-
-EBuildingRotation UAtomicGridLibrary::GetBuildingRotationForInputPort(const EGridDirection InputPort)
+EBuildingRotation UAtomicGridLibrary::GetBeltVisualRotationFromInputPort(const EGridDirection InputPort)
 {
 	const EGridDirection FacingDirection = OppositeGridDirection(InputPort);
 	return GridDirectionToBuildingRotation(FacingDirection);

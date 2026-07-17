@@ -2,10 +2,11 @@
 
 #pragma once
 
-#include "Grid/AtomicGridTypes.h"
+#include "ProjectTypes/AtomicGridTypes.h"
 #include "Net/Serialization/FastArraySerializer.h"
 #include "AtomicBeltRecords.generated.h"
 
+struct FAtomicBeltPlacementCell;
 enum class EAtomicBeltRouteType : uint8;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -13,7 +14,9 @@ enum class EAtomicBeltRouteType : uint8;
 // Keep Compact!  Send IDs, not content.  --  Do not put meshes, materials, data asset pointers, or actor pointers in this record.
 // FFastArraySerializerItem -- Replication tick: Unreal serializes only added/changed/removed items
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /// Belt Record stores runtime placed truth
+/// One Belt Cell used for simulation, visuals, occupancy
 USTRUCT(BlueprintType)
 struct FAtomicBeltRecord : public FFastArraySerializerItem {
 	GENERATED_BODY()
@@ -30,6 +33,10 @@ struct FAtomicBeltRecord : public FFastArraySerializerItem {
 	UPROPERTY()
 	FGuid InstanceID;
 	
+	// The Belt Line this belt instance belongs to
+	UPROPERTY()
+	FGuid LineID;
+	
 	// ID to lookup Belt Definition in UAtomicBuildingRegistrySubsystem
 	UPROPERTY()
 	FName DefinitionID;
@@ -42,10 +49,6 @@ struct FAtomicBeltRecord : public FFastArraySerializerItem {
 	
 	UPROPERTY()
 	uint8 DeckIndex = 0;
-	
-	// RouteType = Shape/Path from Input to Output
-	UPROPERTY()
-	EAtomicBeltRouteType RouteType;
 	
 	UPROPERTY()
 	EGridDirection OutputPort = EGridDirection::East;
@@ -78,4 +81,33 @@ struct TStructOpsTypeTraits<FAtomicBeltRecordArray> : public TStructOpsTypeTrait
 	enum {
 		WithNetDeltaSerializer = true
 	};
+};
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+// One Player-Created Belt Line / Removable Group
+USTRUCT(BlueprintType)
+struct FAtomicBeltLineRecord {
+	GENERATED_BODY()
+	
+	UPROPERTY()
+	FGuid LineID;
+	
+	UPROPERTY()
+	FName BeltID;
+	
+	UPROPERTY()
+	int32 OwningPlayerID = INDEX_NONE;
+	
+	UPROPERTY()
+	FIntVector StartCoord;
+	
+	UPROPERTY()
+	FIntVector EndCoord;
+	
+	UPROPERTY()
+	bool bXFirst;
+	
+	UPROPERTY()
+	TArray<FAtomicBeltPlacementCell> BeltCells;
 };
